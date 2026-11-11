@@ -111,7 +111,11 @@ acct
     if (a.auth === 'oauth2' && api.isGoogle(a)) {
       await api.googleSignIn(a, url => {
         console.log(`Opening your browser for the Google sign-in. If it does not open, use this link:\n\n${url}\n`)
-        spawn('rundll32', ['url.dll,FileProtocolHandler', url], { detached: true, stdio: 'ignore' }).unref()
+        const [cmd, args] =
+          process.platform === 'win32' ? ['rundll32', ['url.dll,FileProtocolHandler', url]]
+          : process.platform === 'darwin' ? ['open', [url]]
+          : ['xdg-open', [url]]
+        spawn(cmd as string, args as string[], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref()
       })
     } else if (a.auth === 'oauth2') {
       const { url, verifier } = api.authUrl(a.email)

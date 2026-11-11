@@ -5,7 +5,10 @@ import path from 'node:path'
 import { changed, run, sqlite, tx, accounts } from './db'
 import { oauthKey, passwordKey, setSecret } from './secrets'
 
-const TB_DIR = path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Thunderbird')
+const TB_DIR =
+  process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Thunderbird')
+  : process.platform === 'win32' ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Thunderbird')
+  : path.join(os.homedir(), '.thunderbird')
 const COLORS = ['#1a73e8', '#d93025', '#188038', '#e37400', '#9334e6', '#12b5cb']
 
 /** The profile Thunderbird actually starts with. */

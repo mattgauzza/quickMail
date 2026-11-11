@@ -1,6 +1,6 @@
 {
   "name": "quickmail",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "description": "A fast, Gmail-style local mail client with a CLI for agents",
   "main": "out/main/index.js",
@@ -15,7 +15,7 @@
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "icon": "electron scripts/make-icon.cjs",
-    "dist": "npm run build && electron-builder --win nsis --publish never",
+    "dist": "npm run build && electron-builder --publish never",
     "release": "node scripts/release.mjs"
   },
   "dependencies": {
@@ -42,7 +42,10 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.8"
   },
-  "author": "quickMail contributors",
+  "author": {
+    "name": "quickMail contributors",
+    "email": "quickmail@users.noreply.github.com"
+  },
   "license": "MIT",
   "build": {
     "appId": "app.quickmail.desktop",
@@ -75,6 +78,26 @@
         "owner": "mattgauzza",
         "repo": "quickMail"
       }
-    ]
-  }
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "resources/icon.png",
+      "artifactName": "quickMail-${version}-mac-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "icon": "resources/icon.png",
+      "maintainer": "quickMail contributors <quickmail@users.noreply.github.com>",
+      "artifactName": "quickMail-${version}-linux-${arch}.${ext}"
+    }
+  },
+  "homepage": "https://github.com/mattgauzza/quickMail"
 }

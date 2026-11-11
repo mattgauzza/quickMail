@@ -36,9 +36,24 @@ function watchForUpdates() {
  * Node runtime, so nothing else needs installing. Rewritten on start so they follow app updates.
  */
 function installCli() {
-  if (!app.isPackaged || process.platform !== 'win32' || !process.env.LOCALAPPDATA) return
-  if (/[\\/]win-unpacked[\\/]/i.test(process.execPath)) return // a test build must not hijack the installed copy's launchers
-  const dir =path.join(process.env.LOCALAPPDATA, 'Microsoft', 'WindowsApps')
+  if (!app.isPackaged) return
+  if (/[\\/]release[\\/]/i.test(process.execPath)) return // a test build must not hijack the installed copy's launchers
+  if (process.platform !== 'win32') {
+    // macOS and Linux: a shell launcher in ~/.local/bin. An AppImage has no fixed place on disk to point at.
+    if (process.env.APPIMAGE) return
+    try {
+      const bin = path.join(os.homedir(), '.local', 'bin')
+      const sh = `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec "${process.execPath}" "${path.join(app.getAppPath(), 'dist', 'cli.mjs')}" "$@"\n`
+      fs.mkdirSync(bin, { recursive: true })
+      for (const name of ['quickmail', 'qm']) {
+        const file = path.join(bin, name)
+        if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== sh) fs.writeFileSync(file, sh, { mode: 0o755 })
+      }
+    } catch { /* no CLI launcher; the app itself is unaffected */ }
+    return
+  }
+  if (!process.env.LOCALAPPDATA) return
+  const dir = path.join(process.env.LOCALAPPDATA, 'Microsoft', 'WindowsApps')
   const cli = path.join(app.getAppPath(), 'dist', 'cli.mjs')
   const body = `@echo off\r\nsetlocal\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${process.execPath}" "${cli}" %*\r\n`
   for (const name of ['quickmail.cmd', 'qm.cmd']) {
@@ -72,6 +87,7 @@ async function badge() {
   badged = n
   win.setTitle(n ? `(${n}) quickMail` : 'quickMail')
   if (more && !win.isFocused()) win.flashFrame(true)
+  if (process.platform !== 'win32') return void app.setBadgeCount(n) // dock badge on macOS, launcher badge on Linux
   if (!n) return win.setOverlayIcon(null, '')
   const text = n > 99 ? '99+' : String(n)
   const url: string = await win.webContents.executeJavaScript(`(() => {
@@ -258,7 +274,7 @@ else {
       timer = setTimeout(() => (broadcast('changed'), rebadge()), 120)
     })
     api.events.on('sync', p => win?.webContents.send('sync', p))
-    nativeTheme.on('updated', () => BrowserWindow.getAllWindows().forEach(w => w.setTitleBarOverlay(overlay())))
+    nativeTheme.on('updated', () => BrowserWindow.getAllWindows().forEach(w => { try { w.setTitleBarOverlay(overlay()) } catch { /* not on macOS */ } }))
 
     ipcMain.handle('updateState', () => updateReady)
     ipcMain.handle('installUpdate', () => updateReady && autoUpdater.quitAndInstall())

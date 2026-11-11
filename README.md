@@ -1,6 +1,6 @@
 # quickMail
 
-A fast, Gmail-style mail client for Windows, plus a command-line tool (`quickmail`, alias `qm`) that AI agents and scripts can use to read, search and send mail across all your mailboxes.
+A fast, Gmail-style mail client for Windows (with new macOS and Linux builds), plus a command-line tool (`quickmail`, alias `qm`) that AI agents and scripts can use to read, search and send mail across all your mailboxes.
 
 - Works with any IMAP/SMTP mailbox, Microsoft 365 / Outlook, and Gmail.
 - All mailboxes in one inbox, with unread counts on the taskbar.
@@ -19,13 +19,39 @@ A fast, Gmail-style mail client for Windows, plus a command-line tool (`quickmai
 
 ## Install
 
-1. Download `quickMail-Setup-x.y.z.exe` from the Releases page (or build it yourself, see below).
+quickMail is developed and tested on Windows. macOS and Linux builds are produced automatically and are **new and untested**; please report problems.
+
+### Windows
+
+1. Download `quickMail-Setup-x.y.z.exe` from the [Releases page](https://github.com/mattgauzza/quickMail/releases/latest) (or build it yourself, see below).
 2. Run it. It installs for your Windows user only, with no administrator prompt, and adds Start menu and desktop shortcuts.
 3. Windows may show a "Windows protected your PC" notice because the installer is not code-signed. Choose **More info → Run anyway**.
 
 The first time the app starts it also makes the `quickmail` and `qm` commands available in any new terminal window. Nothing else (Node.js, etc.) needs to be installed.
 
-**Updates** are automatic. quickMail checks this project's GitHub releases when it starts and every few hours, downloads a new version in the background, and shows a green **Update ready** button in the top bar. Click it to restart into the new version, or just close the app and it updates then. (Version 0.1.0 predates this; install 0.2.0 or later once by hand.)
+### macOS (Apple Silicon)
+
+1. Download `quickMail-x.y.z-mac-arm64.dmg` from the Releases page, open it, and drag quickMail to Applications.
+2. The app is not signed with an Apple developer certificate, so macOS refuses to open it at first. Run this once in Terminal, then open the app normally:
+
+   ```
+   xattr -cr /Applications/quickMail.app
+   ```
+
+3. Passwords are kept in the macOS Keychain. The `quickmail` command is placed in `~/.local/bin` the first time the app starts; add that folder to your `PATH` if it is not there already.
+
+Automatic updates do not work on macOS (Apple only allows them for signed apps); download the new `.dmg` to update. Intel Macs are not built yet.
+
+### Linux (x64)
+
+- **Debian / Ubuntu**: download `quickMail-x.y.z-linux-amd64.deb` and install it with `sudo apt install ./quickMail-*.deb`. The `quickmail` command is placed in `~/.local/bin` on first start.
+- **Any distribution**: download `quickMail-x.y.z-linux-x86_64.AppImage`, make it executable (`chmod +x`), and run it. The AppImage updates itself; it does not provide the `quickmail` command.
+
+Passwords are kept in the desktop keyring (GNOME Keyring, KWallet or another Secret Service provider), which must be running.
+
+### Updates
+
+On Windows and the Linux AppImage, updates are automatic. quickMail checks this project's GitHub releases when it starts and every few hours, downloads a new version in the background, and shows a green **Update ready** button in the top bar. Click it to restart into the new version, or just close the app and it updates then. (Version 0.1.0 predates this; install 0.2.0 or later once by hand.)
 
 To remove quickMail, use **Settings → Apps → Installed apps**. Your mail store is left in place; delete the `.quickmail` folder in your user folder to remove that too.
 
@@ -180,7 +206,7 @@ Notes for agents:
 | What | Where |
 |---|---|
 | Mail store (SQLite database and raw messages) | `.quickmail` in your user folder (override with the `QUICKMAIL_HOME` environment variable) |
-| Passwords, sign-in tokens, Google client | Windows Credential Manager, under "quickMail" |
+| Passwords, sign-in tokens, Google client | Windows Credential Manager (macOS Keychain, or the Linux desktop keyring), under "quickMail" |
 
 Nothing is uploaded anywhere. Removing a mailbox in quickMail deletes its local copy only; nothing is deleted on the mail server.
 
@@ -195,7 +221,7 @@ npm run build        # build the app and the CLI
 npm start            # run the built app
 npm link             # optional: put quickmail / qm on PATH from this folder
 npm run dist         # build the installer into release/
-npm run release      # maintainers: build and publish the version in package.json as a GitHub release (needs the gh CLI)
+npm run release      # maintainers: tag the version in package.json; GitHub Actions builds and publishes all installers
 ```
 
 Layout:

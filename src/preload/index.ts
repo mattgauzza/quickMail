@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 contextBridge.exposeInMainWorld('qm', {
+  platform: process.platform,
   call: (method: string, ...args: unknown[]) => ipcRenderer.invoke('api', method, args),
   invoke: (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args),
   on: (channel: 'changed' | 'sync', cb: (...a: any[]) => void) => {

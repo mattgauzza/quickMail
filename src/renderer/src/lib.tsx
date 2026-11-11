@@ -6,6 +6,7 @@ type Fn<K extends keyof Api> = Extract<Api[K], (...a: any[]) => any>
 declare global {
   interface Window {
     qm: {
+      platform: string
       call(method: string, ...args: unknown[]): Promise<any>
       invoke(channel: string, ...args: unknown[]): Promise<any>
       on(channel: 'changed' | 'sync' | 'update', cb: (...a: any[]) => void): () => void

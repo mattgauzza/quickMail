@@ -1,13 +1,15 @@
-// Build the installer for the version in package.json and publish it as a GitHub release.
-// Installed copies of quickMail find it through latest.yml and update themselves.
+// Publish the version in package.json: tags the current commit and pushes the tag.
+// GitHub Actions (.github/workflows/release.yml) then builds the Windows, macOS and Linux
+// installers and attaches them to the release; installed copies update themselves from it.
 // Usage: bump "version" in package.json, commit and push, then: npm run release
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 
 const { version } = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-const run = (cmd, args) => execFileSync(cmd, args, { stdio: 'inherit', shell: process.platform === 'win32' })
+const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim()
 
-run('npm', ['run', 'dist'])
-const files = [`release/quickMail-Setup-${version}.exe`, `release/quickMail-Setup-${version}.exe.blockmap`, 'release/latest.yml']
-for (const f of files) if (!fs.existsSync(f)) throw new Error(`Missing ${f}`)
-run('gh', ['release', 'create', `v${version}`, ...files, '--title', `"quickMail ${version}"`, '--generate-notes'])
+if (git('status', '--porcelain')) throw new Error('Commit your changes first')
+git('push', 'origin', 'HEAD')
+git('tag', `v${version}`)
+git('push', 'origin', `v${version}`)
+console.log(`Tagged v${version}. Watch the build with: gh run watch`)
