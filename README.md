@@ -127,9 +127,9 @@ quickmail accounts login you@gmail.com
 
 If you would rather skip the setup above: turn on 2-Step Verification for the Google account, create an app password (Google Account → Security → App passwords), then add the mailbox as a normal IMAP mailbox with that app password. Leave the Gmail box unticked.
 
-### Known Gmail limitation
+### How Gmail's labels appear
 
-Gmail keeps a copy of every message in "All Mail". Searches across all folders can therefore show a Gmail message twice. The inbox and unread counts are not affected.
+Gmail presents "All Mail" and each of your labels as a folder, so one message can exist in several of them. quickMail shows such a message once in lists and search results, downloads it once, and stores it once. Your labels appear as folders in the sidebar.
 
 ## Using the app
 

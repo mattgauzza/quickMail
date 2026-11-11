@@ -91,11 +91,17 @@ function where(v: View) {
 const person = (name: string, address: string) => ({ name, address })
 const emailOf = () => new Map(accounts().map(a => [a.id, a.email]))
 
+// One value per real message. Gmail lists the same message under Inbox, All Mail and every label,
+// and a sent message can sit in two "Sent" folders; lists and counts treat those copies as one.
+const ONE = `CASE WHEN m.message_id = '' THEN 'id:' || m.id ELSE m.message_id END`
+
 /** Conversations matching a view, newest first. `id` is the newest message; `ids` are all messages of the conversation in this view. */
 export function listThreads(v: View = {}, limit = 50, offset = 0) {
   const { sql, params } = where(v)
   const rows = all<any>(
-    `SELECT m.account_id, m.thread_id, m.id, MAX(m.date) AS date, COUNT(*) AS count, SUM(1-m.seen) AS unread,
+    // "newest" doubles as the pick of which copy represents the conversation: SQLite fills the plain columns from
+    // the row holding the MAX, and the +1 makes a copy in a real folder win over its duplicate in Gmail's All Mail.
+    `SELECT m.account_id, m.thread_id, m.id, MAX(m.date * 2 + (f.role <> 'archive')) / 2 AS date, COUNT(DISTINCT ${ONE}) AS count, SUM(1-m.seen) AS unread,
             SUM(m.flagged) AS starred, SUM(m.has_attachments) AS attachments, GROUP_CONCAT(m.id) AS ids,
             m.subject, m.snippet, m.from_name, m.from_addr, m.to_json, f.name AS folder, f.role
      FROM messages m JOIN folders f ON f.id=m.folder_id
@@ -140,8 +146,9 @@ export function listMessages(v: View = {}, limit = 50, offset = 0) {
   const emails = emailOf()
   return all<any>(
     `SELECT m.id, m.account_id, m.thread_id, m.date, m.seen, m.flagged, m.has_attachments, m.subject, m.snippet,
-            m.from_name, m.from_addr, m.to_json, f.name AS folder
-     FROM messages m JOIN folders f ON f.id=m.folder_id WHERE ${sql} ORDER BY m.date DESC LIMIT ? OFFSET ?`,
+            m.from_name, m.from_addr, m.to_json, f.name AS folder, MIN((f.role = 'archive') * 1000000000000 + m.id) AS pick
+     FROM messages m JOIN folders f ON f.id=m.folder_id WHERE ${sql}
+     GROUP BY m.account_id, ${ONE} ORDER BY m.date DESC LIMIT ? OFFSET ?`,
     ...params, limit, offset
   ).map(r => ({
     id: r.id as number, account: emails.get(r.account_id)!, threadId: r.thread_id as string, date: r.date as number,
