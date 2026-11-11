@@ -146,6 +146,11 @@ export function App() {
   const [compose, setCompose] = useState<{ key: number; state: ComposeState } | null>(null)
   const [adding, setAdding] = useState(false)
   const [help, setHelp] = useState(false)
+  const [update, setUpdate] = useState('') // version downloaded and waiting for a restart
+  useEffect(() => {
+    window.qm.invoke('updateState').then(setUpdate, () => {})
+    return window.qm.on('update', setUpdate)
+  }, [])
   const prefix = useRef('') // first key of a two-key shortcut (g i, * a)
   const [tab, setTab] = useState<'mail' | 'messages'>('mail')
   const [status, setStatus] = useState('')
@@ -212,7 +217,10 @@ export function App() {
   useEffect(() => {
     let timer: number
     return window.qm.on('sync', (p: { folder: string; done: number; total: number }) => {
-      setStatus(`Syncing ${p.folder} · ${p.done}/${p.total}`)
+      // Bodies are saved to disk once; the number is what is still left, so it shrinks across restarts.
+      setStatus(p.folder === 'message bodies'
+        ? `Saving mail to this PC (one time) · ${(p.total - p.done).toLocaleString()} left`
+        : `Syncing ${p.folder} · ${p.done}/${p.total}`)
       clearTimeout(timer)
       timer = window.setTimeout(() => setStatus(''), 3000)
     })
@@ -395,7 +403,14 @@ export function App() {
           onSearch={query => go({ query })} onClear={() => go({})} onOpen={t => (setTab('mail'), setOpen(t))}
         />
         <span className="status">{status}</span>
-        <span className="top-btn"><IconButton icon="keyboard" label="Keyboard shortcuts (?)" onClick={() => setHelp(true)} /></span>
+        <span className="top-btn">
+          {update && (
+            <button className="update-btn" title={`quickMail ${update} is ready. Click to restart and update.`} onClick={() => window.qm.invoke('installUpdate')}>
+              <Icon name="download" size={18} /> Update ready
+            </button>
+          )}
+          <IconButton icon="keyboard" label="Keyboard shortcuts (?)" onClick={() => setHelp(true)} />
+        </span>
       </header>
 
       <aside className="side">

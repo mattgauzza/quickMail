@@ -350,7 +350,27 @@ export async function fetchBodies(a: Account, max = Infinity): Promise<number> {
        WHERE m.account_id=? AND m.raw=0 ORDER BY m.date DESC LIMIT 25`, a.id
     )
     if (!jobs.length) break
-    await downloadBodies(a, jobs)
+    // Gmail shows one message in several folders (Inbox, All Mail, every label). When a copy is already
+    // on disk, reuse it instead of downloading again: a hard link, so it takes no extra space either.
+    const fresh: BodyJob[] = []
+    for (const j of jobs) {
+      const twin = get<{ id: number }>(
+        `SELECT t.id FROM messages m JOIN messages t ON t.account_id=m.account_id AND t.message_id=m.message_id AND t.raw=1 AND t.id<>m.id
+         WHERE m.id=? AND m.message_id<>'' LIMIT 1`, j.id
+      )
+      const have = twin && rawPath(a.id, twin.id)
+      if (!have || !fs.existsSync(have)) { fresh.push(j); continue }
+      try {
+        const file = rawPath(a.id, j.id)
+        fs.mkdirSync(path.dirname(file), { recursive: true })
+        fs.rmSync(file, { force: true })
+        try { fs.linkSync(have, file) } catch { fs.copyFileSync(have, file) }
+        await storeBody(a.id, j.id, fs.readFileSync(file), false)
+      } catch {
+        fresh.push(j)
+      }
+    }
+    if (fresh.length) await downloadBodies(a, fresh)
     done += jobs.length
     const left = get<{ n: number }>('SELECT COUNT(*) n FROM messages WHERE account_id=? AND raw=0', a.id)!.n
     events.emit('sync', { account: a.email, folder: 'message bodies', done, total: done + left })

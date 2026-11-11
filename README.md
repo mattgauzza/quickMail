@@ -25,6 +25,8 @@ A fast, Gmail-style mail client for Windows, plus a command-line tool (`quickmai
 
 The first time the app starts it also makes the `quickmail` and `qm` commands available in any new terminal window. Nothing else (Node.js, etc.) needs to be installed.
 
+**Updates** are automatic. quickMail checks this project's GitHub releases when it starts and every few hours, downloads a new version in the background, and shows a green **Update ready** button in the top bar. Click it to restart into the new version, or just close the app and it updates then. (Version 0.1.0 predates this; install 0.2.0 or later once by hand.)
+
 To remove quickMail, use **Settings → Apps → Installed apps**. Your mail store is left in place; delete the `.quickmail` folder in your user folder to remove that too.
 
 ## Add your mailboxes
@@ -193,6 +195,7 @@ npm run build        # build the app and the CLI
 npm start            # run the built app
 npm link             # optional: put quickmail / qm on PATH from this folder
 npm run dist         # build the installer into release/
+npm run release      # maintainers: build and publish the version in package.json as a GitHub release (needs the gh CLI)
 ```
 
 Layout:

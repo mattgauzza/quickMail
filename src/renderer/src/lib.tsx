@@ -8,7 +8,7 @@ declare global {
     qm: {
       call(method: string, ...args: unknown[]): Promise<any>
       invoke(channel: string, ...args: unknown[]): Promise<any>
-      on(channel: 'changed' | 'sync', cb: (...a: any[]) => void): () => void
+      on(channel: 'changed' | 'sync' | 'update', cb: (...a: any[]) => void): () => void
       pathFor(file: File): string
     }
   }

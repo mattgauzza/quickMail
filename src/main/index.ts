@@ -2,11 +2,33 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { BrowserWindow, app, dialog, ipcMain, nativeImage, nativeTheme, session, shell } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import * as api from '../core/api'
 
 let win: BrowserWindow | null = null
 const ICON = path.join(__dirname, '../../resources/icon.png')
 app.setAppUserModelId('app.quickmail.desktop') // own taskbar button and icon, not Electron's
+
+let updateReady = '' // version that is downloaded and waiting for a restart
+
+/**
+ * Installed copies keep themselves current from the project's GitHub releases: check at start and
+ * every few hours, download in the background, then offer a restart (the button in the top bar).
+ * An update left waiting is installed the next time the app is closed.
+ */
+function watchForUpdates() {
+  if (!app.isPackaged) return
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.on('update-downloaded', info => {
+    updateReady = info.version
+    win?.webContents.send('update', updateReady)
+  })
+  autoUpdater.on('error', () => {}) // offline, or GitHub unreachable: try again at the next check
+  const check = () => autoUpdater.checkForUpdates().catch(() => {})
+  check()
+  setInterval(check, 3 * 60 * 60_000)
+}
 
 /**
  * Installed copies make `quickmail` and `qm` work in any terminal: two small launchers in the
@@ -15,7 +37,8 @@ app.setAppUserModelId('app.quickmail.desktop') // own taskbar button and icon, n
  */
 function installCli() {
   if (!app.isPackaged || process.platform !== 'win32' || !process.env.LOCALAPPDATA) return
-  const dir = path.join(process.env.LOCALAPPDATA, 'Microsoft', 'WindowsApps')
+  if (/[\\/]win-unpacked[\\/]/i.test(process.execPath)) return // a test build must not hijack the installed copy's launchers
+  const dir =path.join(process.env.LOCALAPPDATA, 'Microsoft', 'WindowsApps')
   const cli = path.join(app.getAppPath(), 'dist', 'cli.mjs')
   const body = `@echo off\r\nsetlocal\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${process.execPath}" "${cli}" %*\r\n`
   for (const name of ['quickmail.cmd', 'qm.cmd']) {
@@ -237,8 +260,11 @@ else {
     api.events.on('sync', p => win?.webContents.send('sync', p))
     nativeTheme.on('updated', () => BrowserWindow.getAllWindows().forEach(w => w.setTitleBarOverlay(overlay())))
 
+    ipcMain.handle('updateState', () => updateReady)
+    ipcMain.handle('installUpdate', () => updateReady && autoUpdater.quitAndInstall())
     installCli()
     createWindow()
+    watchForUpdates()
     refresh().catch(() => {})
     setInterval(() => refresh().catch(() => {}), 60_000)
   })
