@@ -215,6 +215,10 @@ Environment variables: `QUICKMAIL_HOME` (store location), `QUICKMAIL_MS_CLIENT_I
 - **`quickmail` is not recognised**: start the app once, then open a new terminal window.
 - **Wrong server settings**: remove the mailbox (`quickmail accounts remove <email>`) and add it again.
 
+## Support
+
+quickMail is free and open source. If it is useful to you, you can support its development through [GitHub Sponsors](https://github.com/sponsors/mattgauzza) (also the heart button in the app's top bar).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

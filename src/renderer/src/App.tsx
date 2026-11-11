@@ -17,6 +17,7 @@ const NAV: [key: string, label: string, icon: string][] = [
   ['archive', 'Archive', 'archive'], ['junk', 'Spam', 'junk'], ['trash', 'Trash', 'trash']
 ]
 const PAGE = 50
+const SPONSOR = 'https://github.com/sponsors/mattgauzza'
 
 interface ViewState { account: number | null; folder: string; query: string }
 type Action = 'archive' | 'trash' | 'junk' | 'inbox' | 'read' | 'unread'
@@ -409,6 +410,7 @@ export function App() {
               <Icon name="download" size={18} /> Update ready
             </button>
           )}
+          <span className="heart"><IconButton icon="heart" label="Support quickMail (opens in your browser)" size={18} onClick={() => window.open(SPONSOR)} /></span>
           <IconButton icon="keyboard" label="Keyboard shortcuts (?)" onClick={() => setHelp(true)} />
         </span>
       </header>

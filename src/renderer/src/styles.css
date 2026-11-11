@@ -60,6 +60,7 @@ button, .row, .side nav button, .chip, .section { transition: background-color .
 .top-btn { display: flex; align-items: center; gap: 6px; margin-left: auto; -webkit-app-region: no-drag; }
 .update-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px 0 10px; border-radius: 16px; background: #1e8e3e; color: #fff; font-size: 13px; font-weight: 500; white-space: nowrap; }
 .update-btn:hover { filter: brightness(1.1); }
+.heart .icon-btn:hover { color: #e8457a; }
 .dialog.keys { width: min(640px, calc(100vw - 48px)); }
 .keys dl { margin: 0; columns: 2; column-gap: 32px; }
 .keys dl div { display: flex; align-items: center; gap: 12px; height: 34px; break-inside: avoid; }
