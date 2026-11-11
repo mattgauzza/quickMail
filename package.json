@@ -1,0 +1,71 @@
+{
+  "name": "quickmail",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A fast, Gmail-style local mail client with a CLI for agents",
+  "main": "out/main/index.js",
+  "bin": {
+    "quickmail": "dist/cli.mjs",
+    "qm": "dist/cli.mjs"
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build && node scripts/build-cli.mjs",
+    "build:cli": "node scripts/build-cli.mjs",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "icon": "electron scripts/make-icon.cjs",
+    "dist": "npm run build && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "@napi-rs/keyring": "^2.1.2",
+    "commander": "^15.1.0",
+    "imapflow": "^2.11.0",
+    "mailparser": "^3.14.3",
+    "nodemailer": "^10.5.0"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.9.0",
+    "@types/node": "^26.6.6",
+    "@types/nodemailer": "^8.0.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "electron": "^45.3.0",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "esbuild": "^0.28.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  },
+  "author": "quickMail contributors",
+  "license": "MIT",
+  "build": {
+    "appId": "app.quickmail.desktop",
+    "productName": "quickMail",
+    "asar": false,
+    "files": [
+      "out/**",
+      "dist/cli.mjs",
+      "resources/icon.png",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "resources/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "include": "build/installer.nsh",
+      "artifactName": "quickMail-Setup-${version}.exe",
+      "shortcutName": "quickMail"
+    }
+  }
+}

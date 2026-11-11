@@ -1,0 +1,225 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { type ComposeState, replyDraft } from './Compose'
+import { type Message, type Meta, type Thread, Icon, IconButton, avatarColor, call, esc, fileSize, longDate, shortDate, who } from './lib'
+
+const ROLE_LABEL: Record<string, string> = { inbox: 'Inbox', sent: 'Sent', drafts: 'Drafts', archive: 'Archive', junk: 'Spam', trash: 'Trash' }
+
+/** Email HTML is shown in a script-less sandboxed frame with its own strict content policy. */
+function Body({ html, text }: { html: string; text: string }) {
+  const ref = useRef<HTMLIFrameElement>(null)
+  const doc = useMemo(
+    () =>
+      `<!doctype html><html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline'; font-src data: https:">
+<base target="_blank">
+<style>html{overflow:hidden}body{margin:0;padding:1px 0;font:14px/1.5 'Segoe UI',Roboto,Arial,sans-serif;color:#202124;background:#fff;overflow-wrap:anywhere}
+img{max-width:100%}img:not([height]){height:auto}table{max-width:100%}pre{white-space:pre-wrap;font:inherit;margin:0}
+blockquote{margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex}a{color:#0b57d0}</style></head>
+<body>${html || `<pre>${esc(text)}</pre>`}</body></html>`,
+    [html, text]
+  )
+  const fit = () => {
+    const f = ref.current
+    const d = f?.contentDocument
+    if (f && d?.body) f.style.height = `${Math.max(d.body.scrollHeight, d.documentElement.scrollHeight)}px`
+  }
+  return (
+    <iframe
+      ref={ref} className="body" title="Message" srcDoc={doc}
+      sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+      onLoad={() => {
+        fit()
+        const d = ref.current?.contentDocument
+        if (d?.body) new ResizeObserver(fit).observe(d.body)
+        d?.addEventListener('keydown', e => {
+          if (e.ctrlKey || e.metaKey || e.altKey) return // leave copy, select-all and friends alone
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, shiftKey: e.shiftKey }))
+        })
+      }}
+    />
+  )
+}
+
+const ANSWERS = [['ACCEPTED', 'Yes'], ['TENTATIVE', 'Maybe'], ['DECLINED', 'No']] as const
+const SAID: Record<string, string> = { ACCEPTED: 'You said yes', TENTATIVE: 'You said maybe', DECLINED: 'You said no' }
+
+/** Summary of a calendar invitation with one-click answers, shown above the message. */
+function InviteCard({ id, invite }: { id: number; invite: NonNullable<Message['invite']> }) {
+  const key = `qm.rsvp.${invite.uid}`
+  const [said, setSaid] = useState(() => { try { return localStorage.getItem(key) ?? '' } catch { return '' } })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const start = new Date(invite.start)
+  const end = new Date(invite.end)
+  const day = (d: Date) => d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' })
+  const time = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  const sameDay = start.toDateString() === end.toDateString()
+  const whenText = invite.allDay
+    ? day(start)
+    : `${day(start)} • ${time(start)} – ${sameDay ? '' : `${day(end)} `}${time(end)}`
+  const cancelled = invite.method === 'CANCEL'
+
+  const answer = async (a: (typeof ANSWERS)[number][0]) => {
+    setBusy(true)
+    setError('')
+    try {
+      await call('respondInvite', id, a)
+      setSaid(a)
+      try { localStorage.setItem(key, a) } catch { /* the answer was sent; it just won't be remembered here */ }
+    } catch (e: any) {
+      setError(String(e?.message ?? e).replace(/^Error invoking remote method '\w+': (Error: )?/, ''))
+    }
+    setBusy(false)
+  }
+
+  return (
+    <section className="invite">
+      <div className="invite-when">{whenText}{cancelled && ' • Cancelled'}</div>
+      <div className="invite-title">{invite.summary}</div>
+      <div className="invite-meta">
+        {invite.organizer && <span><Icon name="person" size={18} /> {invite.organizer.name || invite.organizer.email} <i>- Organizer</i></span>}
+        {invite.location && <span><Icon name="place" size={18} /> {invite.location}</span>}
+        {invite.attendees.length > 1 && <span title={invite.attendees.map(a => a.name || a.email).join(', ')}><Icon name="people" size={18} /> {invite.attendees.length} invited</span>}
+      </div>
+      {invite.method === 'REQUEST' && invite.organizer && (
+        <div className="invite-actions">
+          {ANSWERS.map(([a, label]) => (
+            <button key={a} className={said === a ? 'primary' : 'tonal'} disabled={busy} onClick={() => answer(a)}>{label}</button>
+          ))}
+          <span className="muted">{busy ? 'Sending your answer…' : said ? `${SAID[said]}. The organizer has been told.` : ''}</span>
+        </div>
+      )}
+      {error && <p className="error">{error}</p>}
+    </section>
+  )
+}
+
+function Card(p: { meta: Meta; open: boolean; toggle: () => void; onCompose: (c: ComposeState) => void; onStar: () => void; registerLatest?: (m: Message) => void }) {
+  const { meta } = p
+  const [msg, setMsg] = useState<Message | null>(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!p.open || msg) return
+    call('getMessage', meta.id, true).then(m => (setMsg(m), p.registerLatest?.(m)), e => setError(String(e.message)))
+  }, [p.open, meta.id])
+
+  const name = who(meta.from)
+  return (
+    <article className={`card${p.open ? ' open' : ''}`}>
+      <header onClick={p.toggle}>
+        <span className="avatar" style={{ background: avatarColor(meta.from.address) }}>{name[0]?.toUpperCase() ?? '?'}</span>
+        <div className="who">
+          <div>
+            <b>{name}</b>
+            {p.open && <span className="addr">&lt;{meta.from.address}&gt;</span>}
+          </div>
+          <div className="sub">{p.open ? `to ${[...meta.to, ...meta.cc].map(who).join(', ') || 'undisclosed recipients'}` : meta.snippet}</div>
+        </div>
+        <time title={longDate(meta.date)}>{p.open ? longDate(meta.date) : shortDate(meta.date)}</time>
+        <span onClick={e => e.stopPropagation()} className="card-actions">
+          <IconButton icon={meta.starred ? 'star' : 'starOff'} label={meta.starred ? 'Remove star' : 'Star'} active={meta.starred} onClick={p.onStar} />
+          {p.open && msg && <IconButton icon="reply" label="Reply" onClick={() => p.onCompose(replyDraft(msg, 'reply'))} />}
+        </span>
+      </header>
+      {p.open && (
+        <div className="card-body">
+          {error ? <p className="error">Could not load this message: {error}</p> : !msg ? <p className="muted">Loading…</p> : (
+            <>
+              {msg.invite && <InviteCard id={msg.id} invite={msg.invite} />}
+              <div className="paper"><Body html={msg.html} text={msg.text} /></div>
+              {msg.attachments.length > 0 && (
+                <div className="chips">
+                  {msg.attachments.map(a => (
+                    <span className="chip file" key={a.index} title="Open" onClick={() => window.qm.invoke('openAttachment', msg.id, a.index)}>
+                      <Icon name="attach" size={16} /> {a.filename} <i>{fileSize(a.size)}</i>
+                      <button aria-label={`Save ${a.filename}`} title="Save as…" onClick={e => (e.stopPropagation(), window.qm.invoke('saveAttachment', msg.id, a.index, a.filename))}>
+                        <Icon name="download" size={16} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </article>
+  )
+}
+
+export function ThreadView(p: {
+  thread: Pick<Thread, 'id' | 'role' | 'folder'>
+  /** full: replaces the list. split: beside the list. window: a window of its own. */
+  mode?: 'full' | 'split' | 'window'
+  onPopout?: () => void
+  onBack: () => void
+  onAct: (kind: 'archive' | 'trash' | 'junk' | 'inbox' | 'unread') => void
+  onCompose: (c: ComposeState) => void
+  /** Lets the app's keyboard shortcuts (r / a / f) reach the newest message. */
+  latest: React.MutableRefObject<Message | null>
+}) {
+  const [metas, setMetas] = useState<Meta[] | null>(null)
+  const [open, setOpen] = useState<Set<number>>(new Set())
+  const hidden = ['trash', 'junk'].includes(p.thread.role)
+
+  useEffect(() => {
+    let first = true
+    p.latest.current = null
+    const load = () =>
+      call('getThread', p.thread.id, hidden).then(
+        ms => {
+          setMetas(ms)
+          if (!first) return
+          first = false
+          const unread = ms.filter(m => m.unread).map(m => m.id)
+          setOpen(new Set([...unread, ms[ms.length - 1].id]))
+          if (unread.length) call('setFlags', unread, { seen: true }).catch(() => {})
+        },
+        () => p.onBack() // the conversation is gone (moved or deleted elsewhere)
+      )
+    load()
+    return window.qm.on('changed', load)
+  }, [p.thread.id])
+
+  if (!metas) return <div className="pane" />
+  const last = metas[metas.length - 1]
+  const compose = async (mode: 'reply' | 'all' | 'forward') => p.onCompose(replyDraft(p.latest.current ?? (await call('getMessage', last.id, true)), mode))
+  const many = last.to.length + last.cc.length > 1
+
+  return (
+    <div className="pane">
+      <div className="toolbar">
+        {p.mode === 'split'
+          ? <IconButton icon="close" label="Close (u)" onClick={p.onBack} />
+          : p.mode !== 'window' && <IconButton icon="back" label="Back (u)" onClick={p.onBack} />}
+        {p.thread.role === 'inbox'
+          ? <IconButton icon="archive" label="Archive (e)" onClick={() => p.onAct('archive')} />
+          : <IconButton icon="inbox" label="Move to Inbox" onClick={() => p.onAct('inbox')} />}
+        {p.thread.role !== 'junk' && <IconButton icon="junk" label="Report spam" onClick={() => p.onAct('junk')} />}
+        <IconButton icon="trash" label={p.thread.role === 'trash' ? 'Delete forever' : 'Delete (#)'} onClick={() => p.onAct('trash')} />
+        <IconButton icon="unread" label="Mark as unread" onClick={() => p.onAct('unread')} />
+        {p.onPopout && <span className="pager"><IconButton icon="popout" label="Open in new window" onClick={p.onPopout} /></span>}
+      </div>
+      <div className="thread">
+        <h1>
+          {last.subject || '(no subject)'} <span className="tag">{ROLE_LABEL[p.thread.role] ?? p.thread.folder}</span>
+        </h1>
+        {metas.map(m => (
+          <Card
+            key={m.id} meta={m} open={open.has(m.id)}
+            toggle={() => setOpen(s => { const n = new Set(s); n.has(m.id) ? n.delete(m.id) : n.add(m.id); return n })}
+            onCompose={p.onCompose}
+            onStar={() => call('setFlags', [m.id], { flagged: !m.starred }).catch(() => {})}
+            registerLatest={m.id === last.id ? msg => (p.latest.current = msg) : undefined}
+          />
+        ))}
+        <div className="reply-row">
+          <button className="pill" onClick={() => compose('reply')}><Icon name="reply" size={18} /> Reply</button>
+          {many && <button className="pill" onClick={() => compose('all')}><Icon name="replyAll" size={18} /> Reply all</button>}
+          <button className="pill" onClick={() => compose('forward')}><Icon name="forward" size={18} /> Forward</button>
+        </div>
+      </div>
+    </div>
+  )
+}
