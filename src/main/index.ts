@@ -150,6 +150,7 @@ const external = (url: string) => {
 
 /** Check for new mail everywhere, then quietly download bodies. */
 async function refresh(ref?: number | string | null) {
+  if (api.DEMO) return
   await api.sync(ref ?? null, false)
   api.backfill()
 }

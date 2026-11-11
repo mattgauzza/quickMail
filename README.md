@@ -6,8 +6,25 @@ A fast, Gmail-style mail client for Windows (with new macOS and Linux builds), p
 - All mailboxes in one inbox, with unread counts on the taskbar.
 - Everything is stored on your PC. quickMail has no server and sends nothing anywhere except to your own mail providers.
 
+![All mailboxes in one inbox, unread first](docs/screenshots/inbox.png)
+
+| Reading pane beside the list | Search as you type |
+|---|---|
+| ![A conversation open beside the list](docs/screenshots/reading-pane.png) | ![Search suggestions with people and conversations](docs/screenshots/search.png) |
+
+The mail in these screenshots is made up. You can open the same demo yourself with `npm run demo` (see [Build from source](#build-from-source)).
+
+## Why I built it
+
+I was frustrated with Outlook, and I never liked how Thunderbird looks. It felt clunky, and it had no good way to see all my mailboxes in one place.
+
+Neither one gave me a free, easy command-line tool either. That is the part I wanted most: now an AI agent can search my mail, clean it up, or do whatever else I ask across every mailbox, for free, on my own machine.
+
+So quickMail is two things that share one local mail store: an app that works the way Gmail does, and a CLI built for agents.
+
 ## Contents
 
+- [Why I built it](#why-i-built-it)
 - [Install](#install)
 - [Add your mailboxes](#add-your-mailboxes)
 - [Adding a Gmail account](#adding-a-gmail-account)
@@ -224,6 +241,7 @@ Requires Node.js 22 or newer on Windows.
 
 ```
 npm install
+npm run demo         # try the app with made-up mail: no accounts needed, nothing is sent or synced
 npm run dev          # run the app with live reload
 npm run build        # build the app and the CLI
 npm start            # run the built app

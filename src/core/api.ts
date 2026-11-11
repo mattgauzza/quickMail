@@ -258,7 +258,7 @@ export function listAccounts() {
   return accounts().map(a => ({
     id: a.id, email: a.email, name: a.name, auth: a.auth, color: a.color, status: a.status, lastSync: a.last_sync,
     provider: a.auth !== 'oauth2' ? '' : /gmail|googlemail/i.test(a.imap_host) ? 'Google' : 'Microsoft',
-    imap: `${a.imap_host}:${a.imap_port}`, smtp: `${a.smtp_host}:${a.smtp_port}`, signedIn: hasCredentials(a)
+    imap: `${a.imap_host}:${a.imap_port}`, smtp: `${a.smtp_host}:${a.smtp_port}`, signedIn: DEMO || hasCredentials(a)
   }))
 }
 
@@ -271,6 +271,9 @@ export function addAccount(a: Omit<Account, 'id' | 'status' | 'last_sync' | 'col
   )
   changed()
 }
+
+/** Demo mode (QUICKMAIL_DEMO=1, see scripts/seed-demo.mjs): made-up mailboxes that count as signed in and are never synced. */
+export const DEMO = !!process.env.QUICKMAIL_DEMO
 
 const COLORS = ['#1a73e8', '#188038', '#9334e6', '#e37400', '#d93025', '#12b5cb']
 
