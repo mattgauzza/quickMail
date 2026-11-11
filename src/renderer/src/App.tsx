@@ -406,9 +406,9 @@ export function App() {
         <span className="status">{status}</span>
         <span className="top-btn">
           {update && (
-            <button className="update-btn" title={`quickMail ${update} is ready. Click to restart and update.`} onClick={() => window.qm.invoke('installUpdate')}>
-              <Icon name="download" size={18} /> Update ready
-            </button>
+            <span className="update-icon">
+              <IconButton icon="download" label={`Update ready: click to restart into quickMail ${update}`} onClick={() => window.qm.invoke('installUpdate')} />
+            </span>
           )}
           <span className="heart"><IconButton icon="heart" label="Support quickMail (opens in your browser)" size={18} onClick={() => window.open(SPONSOR)} /></span>
           <IconButton icon="keyboard" label="Keyboard shortcuts (?)" onClick={() => setHelp(true)} />

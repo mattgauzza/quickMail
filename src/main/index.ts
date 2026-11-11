@@ -9,7 +9,8 @@ let win: BrowserWindow | null = null
 const ICON = path.join(__dirname, '../../resources/icon.png')
 app.setAppUserModelId('app.quickmail.desktop') // own taskbar button and icon, not Electron's
 
-let updateReady = '' // version that is downloaded and waiting for a restart
+// Version that is downloaded and waiting for a restart. QUICKMAIL_FAKE_UPDATE shows the button when testing the UI.
+let updateReady = process.env.QUICKMAIL_FAKE_UPDATE || ''
 
 /**
  * Installed copies keep themselves current from the project's GitHub releases: check at start and

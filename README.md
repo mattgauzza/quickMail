@@ -98,7 +98,15 @@ Google requires every mail app to identify itself, and does not offer a shared i
    quickmail accounts google-client <client-id> <client-secret>
    ```
 
-   They are stored in Windows Credential Manager on your PC.
+   They are stored in your system's credential store (Windows Credential Manager, macOS Keychain or the Linux keyring).
+
+**Sharing one setup.** You only do the Google Cloud steps once. The same client ID and secret work:
+
+- for every Gmail account you add on that PC;
+- on your other computers: run the `quickmail accounts google-client` command there with the same two values;
+- for other people (family, a small team): give them the two values and they run the same command, then add their own Gmail account. They sign in to their own mailbox; the client does not give them any access to yours, and it does not give you access to theirs.
+
+Google allows up to 100 different Google accounts to sign in through an unverified app like this. Beyond that, the app has to go through Google's verification. Only share the values with people you trust, since anyone holding them can present their own app to Google under your app's name.
 
 ### Add the Gmail account
 

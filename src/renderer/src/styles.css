@@ -58,8 +58,7 @@ button, .row, .side nav button, .chip, .section { transition: background-color .
 .search:focus-within { background: var(--surface); box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
 .search input { flex: 1; border: 0; outline: 0; background: none; font-size: 15px; color: var(--text); }
 .top-btn { display: flex; align-items: center; gap: 6px; margin-left: auto; -webkit-app-region: no-drag; }
-.update-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px 0 10px; border-radius: 16px; background: #1e8e3e; color: #fff; font-size: 13px; font-weight: 500; white-space: nowrap; }
-.update-btn:hover { filter: brightness(1.1); }
+.update-icon .icon-btn, .update-icon .icon-btn:hover { color: #34a853; }
 .heart .icon-btn:hover { color: #e8457a; }
 .dialog.keys { width: min(640px, calc(100vw - 48px)); }
 .keys dl { margin: 0; columns: 2; column-gap: 32px; }
