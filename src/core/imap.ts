@@ -5,8 +5,13 @@ import { simpleParser } from 'mailparser'
 import { accessToken } from './oauth'
 import { AuthError, getSecret, passwordKey } from './secrets'
 import {
-  type Account, type Folder, all, changed, dropMessages, events, get, placeholders, rawPath, run, tx
+  type Account, type Folder, HOME, all, changed, dropMessages, events, get, placeholders, rawPath, run, tx
 } from './db'
+
+/** One line in ~/.quickmail/slow.log (timings only, never mail content); logging must never break mail. */
+function slowLog(line: string) {
+  try { fs.appendFileSync(path.join(HOME, 'slow.log'), `${new Date().toISOString()} ${line} role=${process.env.QUICKMAIL_ROLE ?? 'cli'}\n`) } catch { /* ignore */ }
+}
 
 // ---------- connections: one reusable connection per account, commands run one at a time ----------
 
@@ -73,11 +78,27 @@ const ROLE_BY_NAME: [RegExp, string][] = [
 const NOT_MAIL = /^(Calendar|Contacts|Tasks|Journal|Notes|Outbox|Conversation History|Sync Issues)(\/|$)/i
 export const ROLE_ORDER = ['inbox', 'sent', 'drafts', 'archive', 'junk', 'trash', '']
 
-async function syncFolderList(c: ImapFlow, a: Account): Promise<Folder[]> {
+/** Each folder's state as the folder listing reported it at the previous check, per account and path. */
+const lastListed = new Map<string, string>()
+
+/** A folder's state as the sync records it; the same string from a SELECT or from a STATUS means nothing changed. */
+const stateOf = (s: { uidValidity?: unknown; uidNext?: unknown; exists?: unknown; highestModseq?: unknown }) =>
+  `${s.uidValidity}:${s.uidNext}:${s.exists}:${s.highestModseq ?? ''}`
+
+/**
+ * List the account's folders. With `states`, each folder's state is asked for in the same command (LIST-STATUS;
+ * servers without it answer STATUS per folder, which still doesn't open the folder), so unchanged folders can be
+ * skipped: on Gmail opening a folder costs 1.6-3.3 s even when nothing changed.
+ */
+async function syncFolderList(c: ImapFlow, a: Account, states?: Map<string, string>): Promise<Folder[]> {
   const exchange = /office365|outlook/i.test(a.imap_host)
   // Gmail's Important and Starred "folders" are only other views of mail that already lives elsewhere.
   const view = (b: { flags: Set<string> }) => b.flags.has('\\Important') || b.flags.has('\\Flagged')
-  const boxes = (await c.list()).filter(b => !b.flags.has('\\Noselect') && !view(b) && !(exchange && NOT_MAIL.test(b.path)))
+  const listed = await c.list(states ? { statusQuery: { messages: true, uidNext: true, uidValidity: true, highestModseq: true } } : {})
+  const boxes = listed.filter(b => !b.flags.has('\\Noselect') && !view(b) && !(exchange && NOT_MAIL.test(b.path)))
+  if (states)
+    for (const b of boxes)
+      if (b.status?.highestModseq) states.set(b.path, stateOf({ ...b.status, exists: b.status.messages }))
   // What the server declares wins; folder names only fill the roles nobody declared.
   const roles = new Map<string, string>()
   const claim = (b: (typeof boxes)[number], role?: string) => {
@@ -199,27 +220,53 @@ export async function syncFolder(c: ImapFlow, a: Account, f: Folder, arrived?: n
   const lock = await c.getMailboxLock(f.path)
   try {
     const mb = c.mailbox as any
-    const state = `${mb.uidValidity}:${mb.uidNext}:${mb.exists}:${mb.highestModseq ?? ''}`
+    const state = stateOf(mb)
     if (mb.highestModseq && state === f.sync_state) return 0
     const watch = arrived && f.role === 'inbox' && !!f.sync_state && f.sync_state.split(':')[0] === String(mb.uidValidity)
     const newerThan = a.last_sync - 15 * 60_000
     if (f.sync_state && f.sync_state.split(':')[0] !== String(mb.uidValidity))
       dropMessages(all<{ id: number }>('SELECT id FROM messages WHERE folder_id=?', f.id).map(r => r.id))
 
+    // With a change counter from the last check (CONDSTORE), ask only for what changed since then: flag changes and
+    // new mail. Reading every message's flags took 5-65 s per Gmail folder, and Gmail's counter is one for the
+    // whole mailbox, so any new mail anywhere made every folder look changed.
+    const [prevValidity, , , prevModseq] = (f.sync_state || '').split(':')
+    const incremental = !!f.sync_state && prevValidity === String(mb.uidValidity) && !!prevModseq && !!mb.highestModseq
     const remote = new Map<number, Set<string>>()
-    if (mb.exists) for await (const m of c.fetch('1:*', { uid: true, flags: true })) remote.set(m.uid, m.flags ?? new Set())
+    if (mb.exists)
+      for await (const m of c.fetch('1:*', { uid: true, flags: true }, incremental ? { changedSince: BigInt(prevModseq) } : {}))
+        remote.set(m.uid, m.flags ?? new Set())
 
-    const local = all<{ id: number; uid: number; seen: number; flagged: number; answered: number }>(
-      'SELECT id, uid, seen, flagged, answered FROM messages WHERE folder_id=?', f.id
+    const local = all<{ id: number; uid: number; seen: number; flagged: number; answered: number; message_id: string }>(
+      'SELECT id, uid, seen, flagged, answered, message_id FROM messages WHERE folder_id=?', f.id
     )
-    dropMessages(local.filter(l => !remote.has(l.uid)).map(l => l.id))
+    let gone: number[]
+    if (!incremental) gone = local.filter(l => !remote.has(l.uid)).map(l => l.id)
+    else {
+      // Removed mail doesn't show up as a change; the count gives it away, and then the full UID list is compared once.
+      const known = new Set(local.map(l => l.uid))
+      const added = [...remote.keys()].filter(uid => !known.has(uid)).length
+      gone = []
+      if (local.length + added !== mb.exists) {
+        const uids = new Set(((await c.search({ all: true }, { uid: true })) || []) as number[])
+        gone = local.filter(l => !uids.has(l.uid)).map(l => l.id)
+      }
+    }
+    dropMessages(gone)
+    if (process.env.QUICKMAIL_SYNC_DEBUG) slowLog(`check ${a.email} folder="${f.path}" incremental=${incremental} changed=${remote.size} gone=${gone.length}`)
+    // On Gmail a message's flags are the same in every folder, so a change seen here (usually in All Mail, which
+    // is checked every time) is copied to its other copies, whose folders may not be opened this round.
+    const gmail = isGmail(a.id)
     tx(() => {
       for (const l of local) {
         const fl = remote.get(l.uid)
         if (!fl) continue
         const [s, g, r] = [+fl.has('\\Seen'), +fl.has('\\Flagged'), +fl.has('\\Answered')]
-        if (s !== l.seen || g !== l.flagged || r !== l.answered)
+        if (s !== l.seen || g !== l.flagged || r !== l.answered) {
           run('UPDATE messages SET seen=?, flagged=?, answered=? WHERE id=?', s, g, r, l.id)
+          if (gmail && l.message_id)
+            run('UPDATE messages SET seen=?, flagged=?, answered=? WHERE account_id=? AND message_id=? AND id<>?', s, g, r, a.id, l.message_id, l.id)
+        }
         remote.delete(l.uid)
       }
     })
@@ -236,19 +283,23 @@ export async function syncFolder(c: ImapFlow, a: Account, f: Folder, arrived?: n
         })
       )
       // New mail (a handful of messages in a folder that was synced before): save the bodies now, before the
-      // list hears about it, so a message opens at once however soon it is clicked. Gmail's All Mail copy is
-      // left to the background download, which reuses the copy saved here.
-      if (f.sync_state && fresh.length <= 20 && f.role !== 'archive')
+      // list hears about it, so a message opens at once however soon it is clicked. This includes Gmail's All
+      // Mail: mail a Gmail filter files under a label skips the Inbox, and All Mail is synced before the labels,
+      // so for a while its All Mail copy is the only one (opening it later means opening All Mail on the
+      // server: 13-36 s). A copy already saved from another folder (usually the Inbox) is linked, not downloaded.
+      if (f.sync_state && fresh.length <= 20)
         try {
           const rows = all<{ id: number; uid: number }>(
             `SELECT id, uid FROM messages WHERE folder_id=? AND raw=0 AND size<=? AND uid IN (${placeholders(batch.length)})`,
             f.id, 10 * 1024 * 1024, ...batch.map(m => m.uid)
           )
+          const need: typeof rows = []
+          for (const r of rows) if (!(await fromTwin(a.id, r.id))) need.push(r)
           const got: [number, Buffer][] = []
-          if (rows.length)
-            for await (const m of c.fetch(rows.map(r => r.uid).join(','), { uid: true, source: true }, { uid: true }))
+          if (need.length)
+            for await (const m of c.fetch(need.map(r => r.uid).join(','), { uid: true, source: true }, { uid: true }))
               if (m.source) got.push([m.uid, m.source])
-          for (const [uid, source] of got) await storeBody(a.id, rows.find(r => r.uid === uid)!.id, source)
+          for (const [uid, source] of got) await storeBody(a.id, need.find(r => r.uid === uid)!.id, source)
         } catch { /* the background download will get them */ }
       events.emit('sync', { account: a.email, folder: f.name, done: Math.min(i + 200, fresh.length), total: fresh.length })
       changed()
@@ -271,7 +322,41 @@ export async function syncAccount(a: Account): Promise<{ account: string; new: n
   try {
     const added = await withImap(a, async c => {
       let n = 0
-      for (const f of await syncFolderList(c, a)) n += await syncFolder(c, a, f, arrived)
+      const t0 = Date.now()
+      const gmail = isGmail(a.id)
+      const states = new Map<string, string>()
+      const folders = await syncFolderList(c, a, states)
+      let opened = 0
+      for (const f of folders) {
+        const t1 = Date.now()
+        const key = `${a.id}:${f.path}`
+        const now = states.get(f.path)
+        // Unchanged since the last check: don't open the folder. Gmail's STATUS count for All Mail differs from
+        // the count seen on opening it (18,916 vs 18,911), so the count only has to match what the listing
+        // said last time; validity, next UID and the change counter must match the folder's recorded state.
+        const core = (s: string) => s.split(':').filter((_, i) => i !== 2).join(':')
+        const unchanged = (() => {
+          if (!now || !f.sync_state) return false
+          if (gmail) {
+            // Gmail's change counter covers the whole mailbox, so it can't tell which folder changed. All Mail is
+            // checked every time (it sees every flag change, copied to the other copies); any other folder only
+            // when mail arrived (next UID moved) or left it (its listed count moved).
+            if (f.role === 'archive') return false
+            const [v, next, count] = now.split(':')
+            const [sv, snext, scount] = f.sync_state.split(':')
+            return v === sv && next === snext && count === (lastListed.get(key)?.split(':')[2] ?? scount)
+          }
+          return now === f.sync_state || (now === lastListed.get(key) && core(now) === core(f.sync_state))
+        })()
+        const got = unchanged ? 0 : await syncFolder(c, a, f, arrived)
+        if (now) lastListed.set(key, now)
+        n += got
+        if (!unchanged) opened++
+        // A folder that takes long to check is written down (timings only) so the cause can be found afterwards.
+        if (Date.now() - t1 > (process.env.QUICKMAIL_SYNC_DEBUG ? 0 : 5000)) slowLog(`sync ${a.email} folder="${f.path}" ${Date.now() - t1}ms new=${got}`)
+      }
+      if (process.env.QUICKMAIL_SYNC_DEBUG || Date.now() - t0 > 15000)
+        slowLog(`sync ${a.email} total=${Date.now() - t0}ms folders=${folders.length} opened=${opened} new=${n}`)
       return n
     })
     setStatus(a, 'ok')
@@ -416,8 +501,8 @@ async function fromTwin(accountId: number, id: number): Promise<boolean> {
 
 /** Make sure one message's body is on disk (used when opening mail that was never downloaded). */
 export async function ensureBody(id: number) {
-  const m = get<BodyJob & { raw: number; account_id: number }>(
-    'SELECT m.id, m.uid, m.folder_id, m.raw, m.account_id, f.path FROM messages m JOIN folders f ON f.id=m.folder_id WHERE m.id=?', id
+  const m = get<BodyJob & { raw: number; account_id: number; role: string }>(
+    'SELECT m.id, m.uid, m.folder_id, m.raw, m.account_id, f.path, f.role FROM messages m JOIN folders f ON f.id=m.folder_id WHERE m.id=?', id
   )
   if (!m) throw new Error(`No message with id ${id}`)
   if (m.raw === 1 && fs.existsSync(rawPath(m.account_id, id))) return
@@ -425,6 +510,19 @@ export async function ensureBody(id: number) {
   // All Mail folder) although its Inbox copy was already on disk.
   if (await fromTwin(m.account_id, id)) return
   const a = get<Account>('SELECT * FROM accounts WHERE id=?', m.account_id)!
+  if (m.role === 'archive') {
+    // Rather than open Gmail's huge All Mail on the server, download a copy that sits in a smaller folder
+    // (the Inbox or a label) and link it.
+    const other = get<BodyJob>(
+      `SELECT t.id, t.uid, t.folder_id, f.path FROM messages m JOIN messages t ON t.account_id=m.account_id AND t.message_id=m.message_id AND t.id<>m.id
+       JOIN folders f ON f.id=t.folder_id WHERE m.id=? AND m.message_id<>'' AND f.role NOT IN ('archive', 'trash', 'junk') LIMIT 1`, id
+    )
+    if (other)
+      try {
+        await downloadBodies(a, [other])
+        if (await fromTwin(m.account_id, id)) return
+      } catch { /* fall back to All Mail itself */ }
+  }
   await downloadBodies(a, [m])
 }
 

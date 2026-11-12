@@ -387,7 +387,7 @@ Environment variables: `QUICKMAIL_HOME` (store location), `QUICKMAIL_MS_CLIENT_I
 
 ## Troubleshooting
 
-- **A mailbox shows a red "!"**: its sign-in failed or expired. Use the banner at the top of the list to sign in again.
+- **A mailbox shows a red "!"**: click it to see what is wrong. If the server can't be reached (it is down, or this PC is offline) Qmail keeps trying every minute, or press **Try now**. If the sign-in expired, sign in again right there.
 - **"Google sign-in is not set up yet"**: do the one-time setup under [Adding a Gmail account](#adding-a-gmail-account).
 - **Google signs me out every week**: the Google project is still in "Testing". Publish it (step 5).
 - **`qmail` is not recognised**: start the app once, then open a new terminal window.

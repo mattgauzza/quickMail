@@ -93,6 +93,54 @@ function SignIn({ account, onDone }: { account: Account; onDone: () => void }) {
   )
 }
 
+/** A plain reading of a connection error, for people who don't speak IMAP. */
+function explain(msg: string) {
+  if (/ETIMEDOUT|ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|timed? ?out|socket hang up|unavailable|try again later|connection (closed|lost)/i.test(msg))
+    return "The mail server isn't answering. It may be down for a while, or this PC may be offline."
+  return 'The mail server returned an error while Qmail was checking for new mail.'
+}
+
+/** What the red "!" beside a mailbox is about, with a way to fix it: try again, or sign in. */
+function MailboxProblem({ account, onClose, reload }: { account: Account; onClose: () => void; reload: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const needsSignIn = !account.signedIn || account.status === 'auth'
+  const detail = account.status.replace(/^error:\s*/, '')
+  const fixed = account.signedIn && account.status === 'ok'
+  const tryNow = async () => {
+    setBusy(true)
+    try { await window.qm.invoke('refresh', account.id) } catch { /* the new status says what happened */ }
+    reload()
+    setBusy(false)
+  }
+  return (
+    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="dialog">
+        <h2>{fixed ? `${account.email} is working again` : needsSignIn ? `Sign in to ${account.email}` : `Can't reach ${account.email}`}</h2>
+        {fixed ? (
+          <p>It connected and is checking for new mail.</p>
+        ) : needsSignIn ? (
+          <>
+            <p>Its password or sign-in has expired, so Qmail can't check it for new mail.</p>
+            <SignIn account={account} onDone={() => (reload(), onClose())} />
+          </>
+        ) : (
+          <>
+            <p>{explain(detail)}</p>
+            <p className="muted">The server said: {detail || 'nothing'}</p>
+            <p className="muted">
+              {account.lastSync ? `Last tried ${longDate(account.lastSync)}. ` : ''}Qmail tries again on its own every minute.
+            </p>
+          </>
+        )}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          {!fixed && !needsSignIn && <button className="pill" disabled={busy} onClick={tryNow}>{busy ? 'Checking…' : 'Try now'}</button>}
+          <button className="primary" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Setup({ accounts, reload, onAdd }: { accounts: Account[]; reload: () => void; onAdd: () => void }) {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
@@ -158,6 +206,7 @@ export function App() {
   const [adding, setAdding] = useState(false)
   const [help, setHelp] = useState(false)
   const [settings, setSettings] = useState(false)
+  const [problem, setProblem] = useState<number | null>(null) // the mailbox whose "!" was clicked
   const [update, setUpdate] = useState('') // version downloaded and waiting for a restart
   useEffect(() => {
     window.qm.invoke('updateState').then(setUpdate, () => {})
@@ -515,7 +564,7 @@ export function App() {
           {accounts.map(a => (
             <button key={a.id} className={view.account === a.id ? 'on soft' : ''} title={a.status.startsWith('error') ? a.status : !a.signedIn || a.status !== 'ok' ? `${a.email} needs you to sign in` : `Show only ${a.email}`} onClick={() => go({ account: a.id, folder: 'inbox' })}>
               <span className="dot" style={{ background: a.color }} /> <span>{a.email}</span>
-              {!a.signedIn || a.status !== 'ok' ? <em className="warn" title="Needs attention: sign in again">!</em> : unreadIn(a.id) > 0 && <em title={`${unreadIn(a.id).toLocaleString()} unread`}>{unreadIn(a.id)}</em>}
+              {!a.signedIn || a.status !== 'ok' ? <em className="warn hit" title="What's wrong? Click to see" onClick={e => (e.stopPropagation(), setProblem(a.id))}>!</em> :unreadIn(a.id) > 0 && <em title={`${unreadIn(a.id).toLocaleString()} unread`}>{unreadIn(a.id)}</em>}
             </button>
           ))}
         </nav>
@@ -656,6 +705,9 @@ export function App() {
         />
       )}
       {adding && <AddMailbox onClose={added => (setAdding(false), added && (say(`${added} added`), load()))} />}
+      {problem !== null && accounts.some(a => a.id === problem) && (
+        <MailboxProblem account={accounts.find(a => a.id === problem)!} onClose={() => setProblem(null)} reload={load} />
+      )}
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   )

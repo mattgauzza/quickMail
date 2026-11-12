@@ -84,6 +84,9 @@ button, .row, .side nav button, .chip, .section { transition: background-color .
 .side nav em { font-style: normal; font-size: 12px; }
 .side h2 .icon-btn { width: 28px; height: 28px; }
 .side nav em.warn { color: var(--danger); font-weight: 700; }
+/* The "!" opens what's wrong with the mailbox: a 32px round target (negative margins keep the row's height). */
+.side nav em.warn.hit { display: inline-grid; place-items: center; width: 32px; height: 32px; margin: -8px -10px -8px 0; border-radius: 50%; font-size: 15px; cursor: pointer; }
+.side nav em.warn.hit:hover { background: color-mix(in srgb, var(--danger) 22%, transparent); }
 .side h2 { display: flex; align-items: center; justify-content: space-between; height: 28px; margin: 14px 2px 4px 24px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
 .side .bottom { padding-top: 12px; }
 .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; margin: 0 5px; }

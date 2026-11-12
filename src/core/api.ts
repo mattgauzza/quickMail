@@ -354,22 +354,32 @@ export function setPassword(ref: number | string, password: string) {
   setSecret(passwordKey(account(ref)), password)
 }
 
-let syncing: Promise<any> | null = null
+type SyncResult = { account: string; new: number; error?: string }
+const syncing = new Map<number, Promise<SyncResult>>()
 
-/** Sync every account (or one). Message lists first, then bodies unless bodies=false. Concurrent calls share one run. */
-export function sync(ref?: number | string | null, bodies = true) {
-  if (syncing) return syncing as Promise<{ account: string; new: number; error?: string }[]>
+/**
+ * Sync every account (or one). Message lists first, then bodies unless bodies=false. Each mailbox runs on its own:
+ * a call joins a mailbox's check that is still running instead of starting a second one, and a slow mailbox (a
+ * server that is down, a big Gmail) never holds up the others' next check. The list is updated as each folder lands.
+ */
+export function sync(ref?: number | string | null, bodies = true): Promise<SyncResult[]> {
   const list = ref != null && ref !== '' && ref !== 'all' ? [account(ref)] : accounts()
-  syncing = Promise.all(
-    list.map(async a => {
-      const { arrived, ...res } = await syncAccount(a)
-      // Sorting rules act on mail that just arrived; a rule that fails must not fail the check for new mail.
-      if (arrived.length) await applyRules({ ids: arrived }).catch(() => {})
-      if (!res.error && bodies) await fetchBodies(a).catch(e => ((res as { error?: string }).error = `bodies: ${e.message}`))
-      return res
+  return Promise.all(
+    list.map(a => {
+      let run = syncing.get(a.id)
+      if (!run) {
+        run = (async () => {
+          const { arrived, ...res } = await syncAccount(a)
+          // Sorting rules act on mail that just arrived; a rule that fails must not fail the check for new mail.
+          if (arrived.length) await applyRules({ ids: arrived }).catch(() => {})
+          if (!res.error && bodies) await fetchBodies(a).catch(e => ((res as { error?: string }).error = `bodies: ${e.message}`))
+          return res
+        })().finally(() => syncing.delete(a.id))
+        syncing.set(a.id, run)
+      }
+      return run
     })
-  ).finally(() => (syncing = null))
-  return syncing as Promise<{ account: string; new: number; error?: string }[]>
+  )
 }
 
 let filling: Promise<void> | null = null
