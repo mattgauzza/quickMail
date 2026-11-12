@@ -65,7 +65,7 @@ export function Settings(p: { accounts: Account[]; folders: FolderRow[]; onClose
         <h2>Settings</h2>
         <h3>Sorting rules</h3>
         <p className="help">
-          Rules sort mail as it arrives in an inbox, each time Qmail checks for new mail. The first rule that matches a message wins.
+          Rules sort mail as it arrives in an inbox, each time quickMail checks for new mail. The first rule that matches a message wins.
           Starred mail is never moved or deleted by a rule.
         </p>
         {!edit && (
@@ -93,7 +93,7 @@ export function Settings(p: { accounts: Account[]; folders: FolderRow[]; onClose
             </ul>
             {error && <p className="error">{error}</p>}
             <footer>
-              <span className="muted">{busy ? 'Working…' : version && `Qmail ${version}`}</span>
+              <span className="muted">{busy ? 'Working…' : version && `quickMail ${version}`}</span>
               <button type="button" className="pill" title="Add a sorting rule" disabled={busy} onClick={() => setEdit({ ...BLANK })}><Icon name="add" size={18} /> New rule</button>
               <button type="button" className="text-btn" title="Close settings" disabled={busy} onClick={p.onClose}>Close</button>
             </footer>

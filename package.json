@@ -44,13 +44,13 @@
     "vite": "^8.3.8"
   },
   "author": {
-    "name": "Qmail contributors",
+    "name": "quickMail contributors",
     "email": "quickmail@users.noreply.github.com"
   },
   "license": "MIT",
   "build": {
     "appId": "app.quickmail.desktop",
-    "productName": "Qmail",
+    "productName": "quickMail",
     "asar": false,
     "files": [
       "out/**",
@@ -71,8 +71,8 @@
       "oneClick": true,
       "perMachine": false,
       "include": "build/installer.nsh",
-      "artifactName": "Qmail-Setup-${version}.exe",
-      "shortcutName": "Qmail"
+      "artifactName": "quickMail-Setup-${version}.exe",
+      "shortcutName": "quickMail"
     },
     "publish": [
       {
@@ -88,7 +88,7 @@
       ],
       "category": "public.app-category.productivity",
       "icon": "resources/icon.png",
-      "artifactName": "Qmail-${version}-mac-${arch}.${ext}"
+      "artifactName": "quickMail-${version}-mac-${arch}.${ext}"
     },
     "linux": {
       "target": [
@@ -97,8 +97,8 @@
       ],
       "category": "Office",
       "icon": "resources/icon.png",
-      "maintainer": "Qmail contributors <quickmail@users.noreply.github.com>",
-      "artifactName": "Qmail-${version}-linux-${arch}.${ext}"
+      "maintainer": "quickMail contributors <quickmail@users.noreply.github.com>",
+      "artifactName": "quickMail-${version}-linux-${arch}.${ext}"
     }
   },
   "homepage": "https://github.com/mattgauzza/quickMail"

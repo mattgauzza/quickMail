@@ -1,4 +1,4 @@
-// Fills an empty Qmail store with made-up mail, for screenshots and for trying the app without real accounts.
+// Fills an empty quickMail store with made-up mail, for screenshots and for trying the app without real accounts.
 //   npm run demo
 // which is: create ./demo-store, seed it, and start the app with QUICKMAIL_HOME=./demo-store QUICKMAIL_DEMO=1
 // (demo mode treats the fake mailboxes as signed in and never contacts a mail server).
@@ -38,7 +38,7 @@ const mail = [
   [3, 'inbox', 'Payments', 'receipts@payments.example', 'Payout of $1,284.50 is on its way', 'Your weekly payout has been sent to the account ending 4410. It usually arrives within two business days.', 9, 0, 0, ['payout-statement.pdf'], null],
   [1, 'inbox', 'City Library', 'notices@library.example', 'Two items are due on Friday', 'The Overstory and A Field Guide to Getting Lost are due back on Friday. You can renew both online if nobody is waiting.', 22, 0, 0, [], null],
   [2, 'inbox', 'Lena Fischer', 'lena@fischer.example', 'Invoice 1187 for October', 'Hi Sam, the October invoice is attached. Thirty days as usual. Thanks for the quick turnaround on the last round of edits.', 26, 0, 1, ['invoice-1187.pdf'], null],
-  [1, 'inbox', 'Code Host', 'noreply@codehost.example', '[Qmail] Pull request merged: faster search', 'Your pull request "Faster search suggestions" was merged into main. Two checks passed and the branch was deleted.', 30, 0, 0, [], null],
+  [1, 'inbox', 'Code Host', 'noreply@codehost.example', '[quickMail] Pull request merged: faster search', 'Your pull request "Faster search suggestions" was merged into main. Two checks passed and the branch was deleted.', 30, 0, 0, [], null],
   [3, 'inbox', 'Noor Haddad', 'noor@haddad.example', 'Do you ship to Canada?', 'Hello! I would love to order two of the ceramic planters. Do you ship to Toronto, and roughly how long does it take?', 33, 0, 0, [], null],
   [1, 'inbox', 'Rail Tickets', 'bookings@rail.example', 'Your trip on 14 December is confirmed', 'Seat 42A, coach C, departing 08:15. Your ticket is attached and also available in the app.', 49, 0, 0, ['ticket-14-dec.pdf'], null],
   [2, 'inbox', 'Tomás Vidal', 'tomas@vidal.example', 'Feedback on the proposal', 'I read it twice. The scope is right and the phasing makes sense; my only worry is the timeline for the second milestone.', 53, 0, 0, [], null],

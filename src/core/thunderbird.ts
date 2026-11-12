@@ -186,7 +186,7 @@ function readLogins(profile: string): { host: string; user: string; pass: string
 }
 
 /**
- * Copy the saved mail passwords / Microsoft sign-in for accounts Qmail knows about
+ * Copy the saved mail passwords / Microsoft sign-in for accounts quickMail knows about
  * from Thunderbird into the OS credential store. Returns the emails that got credentials.
  */
 export function importPasswords(profile = findProfile()): string[] {

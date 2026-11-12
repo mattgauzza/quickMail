@@ -76,7 +76,7 @@ export function Icon({ name, size = 20 }: { name: string; size?: number }) {
   )
 }
 
-/** The Qmail mark: a Q on a rounded tile. Keep in step with scripts/make-icon.cjs. */
+/** The quickMail mark: a Q on a rounded tile. Keep in step with scripts/make-icon.cjs. */
 export function Logo({ size = 34 }: { size?: number }) {
   return (
     <svg viewBox="0 0 48 48" width={size} height={size} aria-hidden="true">
