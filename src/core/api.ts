@@ -209,7 +209,10 @@ export function getThread(messageId: number, includeHidden = false) {
 
 /** One message with its body. Downloads it first if needed. With inlineImages, embedded pictures are resolved into the HTML. */
 export async function getMessage(id: number, inlineImages = false) {
+  const t0 = Date.now()
+  const onDisk = !!get<{ n: number }>('SELECT 1 AS n FROM messages WHERE id=? AND raw=1', id)
   await ensureBody(id)
+  const t1 = Date.now()
   const r = get<any>(`${MSG} WHERE m.id=?`, id)
   if (!r) throw new Error(`No message with id ${id}`)
   let html: string = r.body_html
@@ -217,7 +220,14 @@ export async function getMessage(id: number, inlineImages = false) {
     for (const x of (await parseRaw(id)).attachments)
       if (x.cid) html = html.replaceAll(`cid:${x.cid}`, `data:${x.contentType};base64,${x.content.toString('base64')}`)
   }
-  return { ...metaOf(r), text: r.body_text as string, html, attachments: listAttachments(id), invite: await inviteOf(id) }
+  const invite = await inviteOf(id)
+  // A message that takes long to open is written down (no content, only timings) so the cause can be found afterwards.
+  if (Date.now() - t0 > 1500)
+    try {
+      fs.appendFileSync(path.join(HOME, 'slow.log'),
+        `${new Date().toISOString()} open id=${id} total=${Date.now() - t0}ms body=${t1 - t0}ms (${onDisk ? 'on disk' : 'downloaded'}) size=${r.size} role=${process.env.QUICKMAIL_ROLE ?? 'cli'}\n`)
+    } catch { /* logging must never break opening mail */ }
+  return { ...metaOf(r), text: r.body_text as string, html, attachments: listAttachments(id), invite }
 }
 
 /** The calendar invitation a message carries, if any. */

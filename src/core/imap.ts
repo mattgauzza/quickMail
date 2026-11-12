@@ -235,6 +235,21 @@ export async function syncFolder(c: ImapFlow, a: Account, f: Folder, arrived?: n
           if (id && watch && +(m.envelope?.date || m.internalDate || 0) >= newerThan) arrived!.push(id)
         })
       )
+      // New mail (a handful of messages in a folder that was synced before): save the bodies now, before the
+      // list hears about it, so a message opens at once however soon it is clicked. Gmail's All Mail copy is
+      // left to the background download, which reuses the copy saved here.
+      if (f.sync_state && fresh.length <= 20 && f.role !== 'archive')
+        try {
+          const rows = all<{ id: number; uid: number }>(
+            `SELECT id, uid FROM messages WHERE folder_id=? AND raw=0 AND size<=? AND uid IN (${placeholders(batch.length)})`,
+            f.id, 10 * 1024 * 1024, ...batch.map(m => m.uid)
+          )
+          const got: [number, Buffer][] = []
+          if (rows.length)
+            for await (const m of c.fetch(rows.map(r => r.uid).join(','), { uid: true, source: true }, { uid: true }))
+              if (m.source) got.push([m.uid, m.source])
+          for (const [uid, source] of got) await storeBody(a.id, rows.find(r => r.uid === uid)!.id, source)
+        } catch { /* the background download will get them */ }
       events.emit('sync', { account: a.email, folder: f.name, done: Math.min(i + 200, fresh.length), total: fresh.length })
       changed()
     }
