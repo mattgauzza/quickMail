@@ -127,6 +127,10 @@ Google requires every mail app to identify itself, and does not offer a shared i
    - **User support email**: pick your address from the dropdown
    - **Audience**: **External**
    - **Contact information**: your email address
+   - **App domain** (on the same Branding page, further down): fill in these three links. Google will not let you publish until the home page and privacy policy are filled in.
+     - **Application home page**: `https://github.com/mattgauzza/quickMail`
+     - **Application privacy policy link**: `https://github.com/mattgauzza/quickMail/blob/main/PRIVACY.md`
+     - **Application terms of service link**: `https://github.com/mattgauzza/quickMail/blob/main/TERMS.md`
 5. Under **Audience**, click **Publish app**. (If you leave it in "Testing", Google signs you out every 7 days.)
 6. Open **Clients** (<https://console.cloud.google.com/auth/clients>) → **Create client** → application type **Desktop app** → **Create**. Copy the **Client ID** and **Client secret**.
 7. Open a terminal and save them in quickMail:
