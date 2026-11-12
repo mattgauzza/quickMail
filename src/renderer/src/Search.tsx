@@ -69,7 +69,7 @@ export function SearchBox(p: {
       <form className="search" onSubmit={e => (e.preventDefault(), q ? (sel >= 0 && actions[sel] ? actions[sel]() : search(q)) : p.onClear())}>
         <Icon name="search" />
         <input
-          ref={p.inputRef} placeholder="Search mail" value={p.value} spellCheck={false}
+          ref={p.inputRef} placeholder="Search mail" title="Search every mailbox (/). Try from:name, subject:word, has:attachment, newer_than:7d" value={p.value} spellCheck={false}
           onChange={e => p.onChange(e.target.value)} onKeyDown={onKey}
         />
         {p.value && <IconButton icon="close" label="Clear search" size={18} onClick={() => (p.onClear(), p.inputRef.current?.focus())} />}
@@ -79,7 +79,7 @@ export function SearchBox(p: {
         <div className="suggestions" onMouseDown={e => e.preventDefault()}>
           <div className="filters">
             {CHIPS.map(([label, token]) => (
-              <button key={token} type="button" tabIndex={-1} className={`filter${has(token) ? ' on' : ''}`} onClick={() => flip(token)}>{label}</button>
+              <button key={token} type="button" tabIndex={-1} className={`filter${has(token) ? ' on' : ''}`} title={`${has(token) ? 'Remove' : 'Add'} the filter ${token}`} onClick={() => flip(token)}>{label}</button>
             ))}
           </div>
           {q && (

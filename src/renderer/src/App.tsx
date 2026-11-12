@@ -3,7 +3,7 @@ import { Compose, type ComposeState, blankDraft, replyDraft } from './Compose'
 import { AddMailbox } from './AddMailbox'
 import { SearchBox } from './Search'
 import { ThreadView } from './ThreadView'
-import { type Account, type FolderRow, type Message, type Thread, Icon, IconButton, Logo, Menu, call, shortDate, who } from './lib'
+import { type Account, type FolderRow, type Message, type Thread, Icon, IconButton, Logo, Menu, call, longDate, shortDate, who } from './lib'
 
 const pref = (key: string, fallback: string) => {
   try { return localStorage.getItem(`qm.${key}`) ?? fallback } catch { return fallback }
@@ -17,6 +17,11 @@ const NAV: [key: string, label: string, icon: string][] = [
   ['archive', 'Archive', 'archive'], ['junk', 'Spam', 'junk'], ['trash', 'Trash', 'trash']
 ]
 const PAGE = 50
+// Hover text for the sidebar folders.
+const NAV_TIP: Record<string, string> = {
+  inbox: 'Inbox (g then i)', starred: 'Starred conversations (g then s)', sent: 'Mail you sent (g then t)', drafts: 'Unfinished messages (g then d)',
+  archive: 'Mail moved out of the inbox', junk: 'Mail marked as spam', trash: 'Deleted mail'
+}
 const SPONSOR = 'https://github.com/sponsors/mattgauzza'
 
 interface ViewState { account: number | null; folder: string; query: string }
@@ -386,7 +391,7 @@ export function App() {
   // Ticks or unticks one section of the inbox, leaving the other section's ticks alone.
   const groupBox = (group: Thread[], hidden: boolean, name: string) => (
     <input
-      type="checkbox" aria-label={`Select all ${name}`} style={hidden || !group.length ? { visibility: 'hidden' } : undefined}
+      type="checkbox" aria-label={`Select all ${name}`} title={`Select all ${name}`} style={hidden || !group.length ? { visibility: 'hidden' } : undefined}
       checked={group.length > 0 && group.every(t => checked.has(keyOf(t)))} onClick={e => e.stopPropagation()}
       onChange={e =>
         setChecked(s => {
@@ -398,10 +403,10 @@ export function App() {
     />
   )
   const section = (
-    <div className="section" onClick={() => setFolded(f => ({ ...f, rest: !f.rest }))}>
+    <div className="section" title={folded.rest ? 'Show everything else' : 'Hide everything else'} onClick={() => setFolded(f => ({ ...f, rest: !f.rest }))}>
       {groupBox(rest, folded.rest, 'everything else')}
       <Icon name={folded.rest ? 'down' : 'up'} /> <b>Everything else</b>
-      <span>{totals.rest.toLocaleString()}</span>
+      <span title={`${totals.rest.toLocaleString()} conversations with nothing unread`}>{totals.rest.toLocaleString()}</span>
     </div>
   )
   const sentLike =view.folder === 'sent' || view.folder === 'drafts'
@@ -410,12 +415,12 @@ export function App() {
   return (
     <div className="app">
       <header className="top">
-        <div className="brand"><Logo /> quickMail</div>
+        <div className="brand" title="quickMail"><Logo /> quickMail</div>
         <SearchBox
           value={search} onChange={setSearch} account={view.account} active={!!view.query} inputRef={searchRef}
           onSearch={query => go({ query })} onClear={() => go({})} onOpen={t => (setTab('mail'), setOpen(t))}
         />
-        <span className="status">{status}</span>
+        <span className="status" title={status}>{status}</span>
         <span className="top-btn">
           {update && (
             <span className="update-icon">
@@ -428,31 +433,31 @@ export function App() {
       </header>
 
       <aside className="side">
-        <button className="compose-btn" onClick={() => newMail(blankDraft(defaultFrom()))}><Icon name="edit" /> Compose</button>
+        <button className="compose-btn" title="Write a new message (c)" onClick={() => newMail(blankDraft(defaultFrom()))}><Icon name="edit" /> Compose</button>
         <nav className="folders">
           {NAV.map(([key, label, icon]) => (
-            <button key={key} className={tab === 'mail' && !view.query && view.folder === key ? 'on' : ''} onClick={() => go({ folder: key })}>
+            <button key={key} title={NAV_TIP[key]} className={tab === 'mail' && !view.query && view.folder === key ? 'on' : ''} onClick={() => go({ folder: key })}>
               <Icon name={icon} /> <span>{label}</span>
-              {['inbox', 'drafts', 'junk'].includes(key) && count(key) > 0 && <em>{count(key)}</em>}
+              {['inbox', 'drafts', 'junk'].includes(key) && count(key) > 0 && <em title={`${count(key).toLocaleString()} ${key === 'drafts' ? 'drafts' : 'unread'}`}>{count(key)}</em>}
             </button>
           ))}
           {custom.map(f => (
-            <button key={f.id} className={tab === 'mail' && !view.query && view.folder === f.name.toLowerCase() ? 'on' : ''} onClick={() => go({ folder: f.name.toLowerCase() })}>
+            <button key={f.id} title={`Folder: ${f.name}`} className={tab === 'mail' && !view.query && view.folder === f.name.toLowerCase() ? 'on' : ''} onClick={() => go({ folder: f.name.toLowerCase() })}>
               <Icon name="folder" /> <span>{f.name}</span>
-              {f.unread > 0 && <em>{f.unread}</em>}
+              {f.unread > 0 && <em title={`${f.unread.toLocaleString()} unread`}>{f.unread}</em>}
             </button>
           ))}
         </nav>
         <h2>Mailboxes <IconButton icon="add" label="Add a mailbox" size={18} onClick={() => setAdding(true)} /></h2>
         <nav>
-          <button className={view.account === null ? 'on soft' : ''} onClick={() => go({ account: null, folder: view.folder })}>
+          <button title="Show mail from every mailbox together" className={view.account === null ? 'on soft' : ''} onClick={() => go({ account: null, folder: view.folder })}>
             <span className="dot all" /> <span>All mailboxes</span>
-            {unreadIn(null) > 0 && <em>{unreadIn(null)}</em>}
+            {unreadIn(null) > 0 && <em title={`${unreadIn(null).toLocaleString()} unread in all inboxes`}>{unreadIn(null)}</em>}
           </button>
           {accounts.map(a => (
-            <button key={a.id} className={view.account === a.id ? 'on soft' : ''} title={a.status.startsWith('error') ? a.status : a.email} onClick={() => go({ account: a.id, folder: view.folder })}>
+            <button key={a.id} className={view.account === a.id ? 'on soft' : ''} title={a.status.startsWith('error') ? a.status : !a.signedIn || a.status !== 'ok' ? `${a.email} needs you to sign in` : `Show only ${a.email}`} onClick={() => go({ account: a.id, folder: view.folder })}>
               <span className="dot" style={{ background: a.color }} /> <span>{a.email}</span>
-              {!a.signedIn || a.status !== 'ok' ? <em className="warn">!</em> : unreadIn(a.id) > 0 && <em>{unreadIn(a.id)}</em>}
+              {!a.signedIn || a.status !== 'ok' ? <em className="warn" title="Needs attention: sign in again">!</em> : unreadIn(a.id) > 0 && <em title={`${unreadIn(a.id).toLocaleString()} unread`}>{unreadIn(a.id)}</em>}
             </button>
           ))}
         </nav>
@@ -466,7 +471,7 @@ export function App() {
           <div ref={paneRef} className={`pane${split ? ' narrow' : ''}`} style={split ? { flex: `0 0 ${splitW}px` } : undefined}>
             <div className="toolbar">
               <input
-                type="checkbox" aria-label="Select all" checked={threads.length > 0 && picked.length === threads.length}
+                type="checkbox" aria-label="Select all" title="Select everything shown (* then a)" checked={threads.length > 0 && picked.length === threads.length}
                 onChange={e => setChecked(e.target.checked ? new Set(threads.map(keyOf)) : new Set())}
               />
               <Menu
@@ -479,27 +484,27 @@ export function App() {
               {picked.length ? (
                 <>
                   {view.folder === 'inbox' && !view.query
-                    ? <IconButton icon="archive" label="Archive" onClick={() => act('archive', picked)} />
+                    ? <IconButton icon="archive" label="Archive (e)" onClick={() => act('archive', picked)} />
                     : <IconButton icon="inbox" label="Move to Inbox" onClick={() => act('inbox', picked)} />}
-                  <IconButton icon="junk" label="Report spam" onClick={() => act('junk', picked)} />
-                  <IconButton icon="trash" label="Delete" onClick={() => act('trash', picked)} />
-                  <IconButton icon="read" label="Mark as read" onClick={() => act('read', picked)} />
-                  <IconButton icon="unread" label="Mark as unread" onClick={() => act('unread', picked)} />
+                  <IconButton icon="junk" label="Report spam (!)" onClick={() => act('junk', picked)} />
+                  <IconButton icon="trash" label="Delete (#)" onClick={() => act('trash', picked)} />
+                  <IconButton icon="read" label="Mark as read (Shift+i)" onClick={() => act('read', picked)} />
+                  <IconButton icon="unread" label="Mark as unread (Shift+u)" onClick={() => act('unread', picked)} />
                   <span className="muted">{picked.length} selected</span>
                 </>
               ) : (
                 <>
                   <IconButton icon="refresh" label="Check for new mail" onClick={() => window.qm.invoke('refresh').catch(e => say(clean(e)))} />
                   <Menu icon="more" label="More" items={[['Mark all as read', markAllRead]]} />
-                  <span className="view-title">{title}</span>
+                  <span className="view-title" title={title}>{title}</span>
                 </>
               )}
-              <span className="pager">
+              <span className="pager" title={rows.length > 0 ? `Showing conversations ${page * PAGE + 1} to ${page * PAGE + rows.length} of ${totals.rest.toLocaleString()}` : undefined}>
                 {rows.length > 0 && `${page * PAGE + 1}–${page * PAGE + rows.length} of ${totals.rest.toLocaleString()}`}
-                <IconButton icon="prev" label="Newer" onClick={() => page > 0 && setPage(page - 1)} />
-                <IconButton icon="next" label="Older" onClick={() => (page + 1) * PAGE < totals.rest && setPage(page + 1)} />
+                <IconButton icon="prev" label="Newer conversations" onClick={() => page > 0 && setPage(page - 1)} />
+                <IconButton icon="next" label="Older conversations" onClick={() => (page + 1) * PAGE < totals.rest && setPage(page + 1)} />
                 <IconButton
-                  icon={split ? 'rows' : 'split'} label={split ? 'Hide reading pane' : 'Show reading pane beside the list'}
+                  icon={split ? 'rows' : 'split'} label={split ? 'Hide reading pane (v)' : 'Show reading pane beside the list (v)'}
                   onClick={() => setLayout(split ? 'list' : 'split')}
                 />
               </span>
@@ -507,10 +512,10 @@ export function App() {
             <div className="list">
               {totals.unread + totals.rest === 0 && <p className="empty">{view.query ? 'No mail matches your search.' : 'Nothing here.'}</p>}
               {headed && (
-                <div className="section" onClick={() => setFolded(f => ({ ...f, unread: !f.unread }))}>
+                <div className="section" title={folded.unread ? 'Show unread' : 'Hide unread'} onClick={() => setFolded(f => ({ ...f, unread: !f.unread }))}>
                   {groupBox(top, folded.unread, 'unread')}
                   <Icon name={folded.unread ? 'down' : 'up'} /> <b>Unread</b>
-                  <span>{unreadRows.length < totals.unread ? `1–${unreadRows.length} of ${totals.unread.toLocaleString()}` : totals.unread}</span>
+                  <span title={`${totals.unread.toLocaleString()} unread conversations`}>{unreadRows.length < totals.unread ? `1–${unreadRows.length} of ${totals.unread.toLocaleString()}` : totals.unread}</span>
                 </div>
               )}
               {threads.map((t, i) => (
@@ -521,21 +526,21 @@ export function App() {
                   className={`row${t.unread ? ' unread' : ''}${checked.has(keyOf(t)) ? ' checked' : ''}${i === cursor ? ' cursor' : ''}${open && keyOf(open) === keyOf(t) ? ' open' : ''}`}
                 >
                   <span className="lead" onClick={e => e.stopPropagation()}>
-                    <input type="checkbox" aria-label="Select conversation" checked={checked.has(keyOf(t))} onChange={() => toggle(t)} />
-                    <IconButton icon={t.starred ? 'star' : 'starOff'} label={t.starred ? 'Remove star' : 'Star'} active={t.starred} onClick={() => star(t)} />
+                    <input type="checkbox" aria-label="Select conversation" title="Select (x)" checked={checked.has(keyOf(t))} onChange={() => toggle(t)} />
+                    <IconButton icon={t.starred ? 'star' : 'starOff'} label={t.starred ? 'Remove star (s)' : 'Star (s)'} active={t.starred} onClick={() => star(t)} />
                   </span>
                   <span className="from">
                     {view.account === null && <span className="dot" title={t.account} style={{ background: accounts.find(a => a.id === t.accountId)?.color }} />}
-                    <span className="names">{sentLike ? `To: ${t.to.map(who).join(', ') || '(no one)'}` : t.participants.join(', ')}</span>
-                    {t.count > 1 && <small>{t.count}</small>}
+                    <span className="names" title={sentLike ? t.to.map(x => x.address).join(', ') : `${t.participants.join(', ')} (${t.from.address})`}>{sentLike ? `To: ${t.to.map(who).join(', ') || '(no one)'}` : t.participants.join(', ')}</span>
+                    {t.count > 1 && <small title={`${t.count} messages in this conversation`}>{t.count}</small>}
                   </span>
-                  <span className="text">
+                  <span className="text" title={t.subject || '(no subject)'}>
                     <span className="subject">{t.subject || '(no subject)'}</span>
                     {t.snippet && <span className="dash"> - </span>}
                     <span className="snippet">{t.snippet}</span>
                   </span>
-                  {t.attachments && <span className="clip"><Icon name="attach" size={16} /></span>}
-                  <time>{shortDate(t.date)}</time>
+                  {t.attachments && <span className="clip" title="Has attachments"><Icon name="attach" size={16} /></span>}
+                  <time title={longDate(t.date)}>{shortDate(t.date)}</time>
                   {t.files.length > 0 && (
                     <span className="row-chips" onClick={e => e.stopPropagation()}>
                       {t.files.slice(0, 3).map(f => (
@@ -543,13 +548,13 @@ export function App() {
                           <Icon name="attach" size={14} /> <span>{f.filename}</span>
                         </button>
                       ))}
-                      {t.files.length > 3 && <span className="chip count">+{t.files.length - 3}</span>}
+                      {t.files.length > 3 && <span className="chip count" title={t.files.slice(3).map(f => f.filename).join(', ')}>+{t.files.length - 3}</span>}
                     </span>
                   )}
                   <span className="hover" onClick={e => e.stopPropagation()}>
-                    <IconButton icon="popout" label="Open in new window" onClick={() => popout(t)} />
-                    {t.role === 'inbox' && <IconButton icon="archive" label="Archive" onClick={() => act('archive', [t])} />}
-                    <IconButton icon="trash" label="Delete" onClick={() => act('trash', [t])} />
+                    <IconButton icon="popout" label="Open in new window (w)" onClick={() => popout(t)} />
+                    {t.role === 'inbox' && <IconButton icon="archive" label="Archive (e)" onClick={() => act('archive', [t])} />}
+                    <IconButton icon="trash" label="Delete (#)" onClick={() => act('trash', [t])} />
                     <IconButton icon={t.unread ? 'read' : 'unread'} label={t.unread ? 'Mark as read' : 'Mark as unread'} onClick={() => act(t.unread ? 'read' : 'unread', [t])} />
                   </span>
                 </div>
@@ -559,7 +564,7 @@ export function App() {
             </div>
           </div>
           )}
-          {split && <div className="grip" onMouseDown={resize} title="Drag to resize" />}
+          {split && <div className="grip" onMouseDown={resize} title="Drag to resize the reading pane" />}
           {open ? (
             <ThreadView
               thread={open} latest={latest} mode={split ? 'split' : 'full'} onBack={() => setOpen(null)} onAct={k => act(k, [open])} onCompose={newMail}

@@ -62,6 +62,7 @@ function Recipients(p: { label: string; value: string; onChange: (v: string) => 
     <div className="field">
       <label>{p.label}</label>
       <input
+        title="Type a name or address; separate several with commas"
         value={p.value} autoFocus={p.autoFocus} spellCheck={false}
         onChange={e => p.onChange(e.target.value)}
         onBlur={() => setTimeout(() => setOptions([]), 150)}
@@ -148,20 +149,20 @@ export function Compose(p: { initial: ComposeState; accounts: Account[]; onClose
       }}
     >
       <header>
-        <span>{d.subject || d.title}</span>
-        <IconButton icon="close" label="Close" size={18} onClick={close} />
+        <span title={d.subject || d.title}>{d.subject || d.title}</span>
+        <IconButton icon="close" label="Close without sending" size={18} onClick={close} />
       </header>
       {p.accounts.length > 1 && (
         <div className="field">
           <label>From</label>
-          <select value={d.from} onChange={e => set({ from: Number(e.target.value) })}>
+          <select title="The mailbox this message is sent from" value={d.from} onChange={e => set({ from: Number(e.target.value) })}>
             {p.accounts.map(a => <option key={a.id} value={a.id}>{a.name ? `${a.name} <${a.email}>` : a.email}</option>)}
           </select>
         </div>
       )}
       <Recipients
         label="To" value={d.to} onChange={to => set({ to })} autoFocus={!p.initial.to}
-        extra={!showCc && <button className="link" onClick={() => setShowCc(true)}>Cc Bcc</button>}
+        extra={!showCc && <button className="link" title="Add copy (Cc) and hidden copy (Bcc) recipients" onClick={() => setShowCc(true)}>Cc Bcc</button>}
       />
       {showCc && <Recipients label="Cc" value={d.cc} onChange={cc => set({ cc })} />}
       {showCc && <Recipients label="Bcc" value={d.bcc} onChange={bcc => set({ bcc })} />}
@@ -171,21 +172,21 @@ export function Compose(p: { initial: ComposeState; accounts: Account[]; onClose
       <div className="editor" ref={editor} contentEditable suppressContentEditableWarning />
       {(files.length > 0 || d.forward) && (
         <div className="chips">
-          {d.forward && <span className="chip muted">Original attachments are included</span>}
+          {d.forward && <span className="chip muted" title="The files attached to the forwarded message are sent along">Original attachments are included</span>}
           {files.map(f => (
-            <span className="chip" key={f.path}>
+            <span className="chip" key={f.path} title={f.path}>
               <Icon name="attach" size={14} /> {f.name} <i>{fileSize(f.size)}</i>
-              <button aria-label={`Remove ${f.name}`} onClick={() => setFiles(fs => fs.filter(x => x !== f))}><Icon name="close" size={14} /></button>
+              <button aria-label={`Remove ${f.name}`} title={`Remove ${f.name}`} onClick={() => setFiles(fs => fs.filter(x => x !== f))}><Icon name="close" size={14} /></button>
             </span>
           ))}
         </div>
       )}
       {error && <div className="compose-error">{error}</div>}
       <footer>
-        <button className="primary" disabled={sending} onClick={send}>{sending ? 'Sending…' : 'Send'}</button>
-        <IconButton icon="attach" label="Attach files" onClick={async () => addFiles(await window.qm.invoke('pickFiles'))} />
+        <button className="primary" title="Send (Ctrl+Enter)" disabled={sending} onClick={send}>{sending ? 'Sending…' : 'Send'}</button>
+        <IconButton icon="attach" label="Attach files (or drop them on this window)" onClick={async () => addFiles(await window.qm.invoke('pickFiles'))} />
         <span className="hint">Ctrl+Enter to send</span>
-        <IconButton icon="trash" label="Discard" onClick={close} />
+        <IconButton icon="trash" label="Discard this message" onClick={close} />
       </footer>
     </div>
   )

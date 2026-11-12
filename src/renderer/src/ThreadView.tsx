@@ -84,7 +84,7 @@ function InviteCard({ id, invite }: { id: number; invite: NonNullable<Message['i
       {invite.method === 'REQUEST' && invite.organizer && (
         <div className="invite-actions">
           {ANSWERS.map(([a, label]) => (
-            <button key={a} className={said === a ? 'primary' : 'tonal'} disabled={busy} onClick={() => answer(a)}>{label}</button>
+            <button key={a} className={said === a ? 'primary' : 'tonal'} disabled={busy} title={`Answer "${label}" and tell the organizer`} onClick={() => answer(a)}>{label}</button>
           ))}
           <span className="muted">{busy ? 'Sending your answer…' : said ? `${SAID[said]}. The organizer has been told.` : ''}</span>
         </div>
@@ -107,19 +107,19 @@ function Card(p: { meta: Meta; open: boolean; toggle: () => void; onCompose: (c:
   const name = who(meta.from)
   return (
     <article className={`card${p.open ? ' open' : ''}`}>
-      <header onClick={p.toggle}>
-        <span className="avatar" style={{ background: avatarColor(meta.from.address) }}>{name[0]?.toUpperCase() ?? '?'}</span>
+      <header onClick={p.toggle} title={p.open ? 'Click to collapse this message' : 'Click to show this message'}>
+        <span className="avatar" title={meta.from.address} style={{ background: avatarColor(meta.from.address) }}>{name[0]?.toUpperCase() ?? '?'}</span>
         <div className="who">
           <div>
-            <b>{name}</b>
+            <b title={meta.from.address}>{name}</b>
             {p.open && <span className="addr">&lt;{meta.from.address}&gt;</span>}
           </div>
-          <div className="sub">{p.open ? `to ${[...meta.to, ...meta.cc].map(who).join(', ') || 'undisclosed recipients'}` : meta.snippet}</div>
+          <div className="sub" title={p.open ? [...meta.to, ...meta.cc].map(x => x.address).join(', ') : undefined}>{p.open ? `to ${[...meta.to, ...meta.cc].map(who).join(', ') || 'undisclosed recipients'}` : meta.snippet}</div>
         </div>
         <time title={longDate(meta.date)}>{p.open ? longDate(meta.date) : shortDate(meta.date)}</time>
         <span onClick={e => e.stopPropagation()} className="card-actions">
-          <IconButton icon={meta.starred ? 'star' : 'starOff'} label={meta.starred ? 'Remove star' : 'Star'} active={meta.starred} onClick={p.onStar} />
-          {p.open && msg && <IconButton icon="reply" label="Reply" onClick={() => p.onCompose(replyDraft(msg, 'reply'))} />}
+          <IconButton icon={meta.starred ? 'star' : 'starOff'} label={meta.starred ? 'Remove star (s)' : 'Star (s)'} active={meta.starred} onClick={p.onStar} />
+          {p.open && msg && <IconButton icon="reply" label="Reply (r)" onClick={() => p.onCompose(replyDraft(msg, 'reply'))} />}
         </span>
       </header>
       {p.open && (
@@ -131,7 +131,7 @@ function Card(p: { meta: Meta; open: boolean; toggle: () => void; onCompose: (c:
               {msg.attachments.length > 0 && (
                 <div className="chips">
                   {msg.attachments.map(a => (
-                    <span className="chip file" key={a.index} title="Open" onClick={() => window.qm.invoke('openAttachment', msg.id, a.index)}>
+                    <span className="chip file" key={a.index} title={`Open ${a.filename}`} onClick={() => window.qm.invoke('openAttachment', msg.id, a.index)}>
                       <Icon name="attach" size={16} /> {a.filename} <i>{fileSize(a.size)}</i>
                       <button aria-label={`Save ${a.filename}`} title="Save as…" onClick={e => (e.stopPropagation(), window.qm.invoke('saveAttachment', msg.id, a.index, a.filename))}>
                         <Icon name="download" size={16} />
@@ -196,14 +196,14 @@ export function ThreadView(p: {
         {p.thread.role === 'inbox'
           ? <IconButton icon="archive" label="Archive (e)" onClick={() => p.onAct('archive')} />
           : <IconButton icon="inbox" label="Move to Inbox" onClick={() => p.onAct('inbox')} />}
-        {p.thread.role !== 'junk' && <IconButton icon="junk" label="Report spam" onClick={() => p.onAct('junk')} />}
+        {p.thread.role !== 'junk' && <IconButton icon="junk" label="Report spam (!)" onClick={() => p.onAct('junk')} />}
         <IconButton icon="trash" label={p.thread.role === 'trash' ? 'Delete forever' : 'Delete (#)'} onClick={() => p.onAct('trash')} />
-        <IconButton icon="unread" label="Mark as unread" onClick={() => p.onAct('unread')} />
-        {p.onPopout && <span className="pager"><IconButton icon="popout" label="Open in new window" onClick={p.onPopout} /></span>}
+        <IconButton icon="unread" label="Mark as unread (Shift+u)" onClick={() => p.onAct('unread')} />
+        {p.onPopout && <span className="pager"><IconButton icon="popout" label="Open in new window (w)" onClick={p.onPopout} /></span>}
       </div>
       <div className="thread">
         <h1>
-          {last.subject || '(no subject)'} <span className="tag">{ROLE_LABEL[p.thread.role] ?? p.thread.folder}</span>
+          {last.subject || '(no subject)'} <span className="tag" title="The folder this conversation is in">{ROLE_LABEL[p.thread.role] ?? p.thread.folder}</span>
         </h1>
         {metas.map(m => (
           <Card
@@ -215,9 +215,9 @@ export function ThreadView(p: {
           />
         ))}
         <div className="reply-row">
-          <button className="pill" onClick={() => compose('reply')}><Icon name="reply" size={18} /> Reply</button>
-          {many && <button className="pill" onClick={() => compose('all')}><Icon name="replyAll" size={18} /> Reply all</button>}
-          <button className="pill" onClick={() => compose('forward')}><Icon name="forward" size={18} /> Forward</button>
+          <button className="pill" title="Reply to the sender (r)" onClick={() => compose('reply')}><Icon name="reply" size={18} /> Reply</button>
+          {many && <button className="pill" title="Reply to everyone on the message (a)" onClick={() => compose('all')}><Icon name="replyAll" size={18} /> Reply all</button>}
+          <button className="pill" title="Send this message on to someone else (f)" onClick={() => compose('forward')}><Icon name="forward" size={18} /> Forward</button>
         </div>
       </div>
     </div>
