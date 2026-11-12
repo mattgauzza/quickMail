@@ -380,26 +380,8 @@ export async function fetchBodies(a: Account, max = Infinity): Promise<number> {
        WHERE m.account_id=? AND m.raw=0 ORDER BY m.date DESC LIMIT 25`, a.id
     )
     if (!jobs.length) break
-    // Gmail shows one message in several folders (Inbox, All Mail, every label). When a copy is already
-    // on disk, reuse it instead of downloading again: a hard link, so it takes no extra space either.
     const fresh: BodyJob[] = []
-    for (const j of jobs) {
-      const twin = get<{ id: number }>(
-        `SELECT t.id FROM messages m JOIN messages t ON t.account_id=m.account_id AND t.message_id=m.message_id AND t.raw=1 AND t.id<>m.id
-         WHERE m.id=? AND m.message_id<>'' LIMIT 1`, j.id
-      )
-      const have = twin && rawPath(a.id, twin.id)
-      if (!have || !fs.existsSync(have)) { fresh.push(j); continue }
-      try {
-        const file = rawPath(a.id, j.id)
-        fs.mkdirSync(path.dirname(file), { recursive: true })
-        fs.rmSync(file, { force: true })
-        try { fs.linkSync(have, file) } catch { fs.copyFileSync(have, file) }
-        await storeBody(a.id, j.id, fs.readFileSync(file), false)
-      } catch {
-        fresh.push(j)
-      }
-    }
+    for (const j of jobs) if (!(await fromTwin(a.id, j.id))) fresh.push(j)
     if (fresh.length) await downloadBodies(a, fresh)
     done += jobs.length
     const left = get<{ n: number }>('SELECT COUNT(*) n FROM messages WHERE account_id=? AND raw=0', a.id)!.n
@@ -409,6 +391,29 @@ export async function fetchBodies(a: Account, max = Infinity): Promise<number> {
   return done
 }
 
+/**
+ * Gmail shows one message in several folders (Inbox, All Mail, every label). When another copy is already
+ * on disk, reuse it instead of downloading: a hard link, so it takes no time and no extra space.
+ */
+async function fromTwin(accountId: number, id: number): Promise<boolean> {
+  const twin = get<{ id: number }>(
+    `SELECT t.id FROM messages m JOIN messages t ON t.account_id=m.account_id AND t.message_id=m.message_id AND t.raw=1 AND t.id<>m.id
+     WHERE m.id=? AND m.message_id<>'' LIMIT 1`, id
+  )
+  const have = twin && rawPath(accountId, twin.id)
+  if (!have || !fs.existsSync(have)) return false
+  try {
+    const file = rawPath(accountId, id)
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.rmSync(file, { force: true })
+    try { fs.linkSync(have, file) } catch { fs.copyFileSync(have, file) }
+    await storeBody(accountId, id, fs.readFileSync(file), false)
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Make sure one message's body is on disk (used when opening mail that was never downloaded). */
 export async function ensureBody(id: number) {
   const m = get<BodyJob & { raw: number; account_id: number }>(
@@ -416,6 +421,9 @@ export async function ensureBody(id: number) {
   )
   if (!m) throw new Error(`No message with id ${id}`)
   if (m.raw === 1 && fs.existsSync(rawPath(m.account_id, id))) return
+  // Opening Gmail's All Mail copy of a new message used to download it again (25-36 s to open the huge
+  // All Mail folder) although its Inbox copy was already on disk.
+  if (await fromTwin(m.account_id, id)) return
   const a = get<Account>('SELECT * FROM accounts WHERE id=?', m.account_id)!
   await downloadBodies(a, [m])
 }
@@ -476,7 +484,10 @@ function withCopies(ids: number[]): number[] {
   return [...new Set([...ids, ...copies.map(c => c.id)])]
 }
 
+const isGmail = (accountId: number) => /gmail|googlemail/i.test(accountById(accountId).imap_host)
+
 export async function setFlags(ids: number[], f: { seen?: boolean; flagged?: boolean; answered?: boolean }) {
+  const asked = new Set(ids)
   ids = withCopies(ids)
   const groups = locate(ids)
   const cols: [string, string, boolean | undefined][] = [
@@ -488,6 +499,10 @@ export async function setFlags(ids: number[], f: { seen?: boolean; flagged?: boo
   })
   changed()
   for (const g of groups.values()) {
+    // On Gmail the copies are one message, so the server already applies the flag everywhere; opening the
+    // other folders (All Mail is huge) would only hold up the connection that opens mail. Other servers keep
+    // real copies, so each one is flagged.
+    if (!g.some(x => asked.has(x.id)) && isGmail(g[0].account_id)) continue
     await onServer(g, c =>
       inFolder(c, g[0].path, async () => {
         for (const [, flag, v] of cols) {

@@ -187,6 +187,7 @@ Gmail presents "All Mail" and each of your labels as a folder, so one message ca
 - **Attachments**: PDFs, pictures and text open in a viewer inside Qmail. Documents open in the program Windows uses for them. Files that can run code (`.exe`, scripts, shortcuts, `.html`…) are never opened directly.
 - **Calendar invitations**: a message that carries an invitation shows the event (date, title, organizer) above the message with **Yes / Maybe / No** buttons. Your answer is mailed to the organizer as a standard calendar reply. Qmail has no calendar of its own, so the event is not saved anywhere and conflicts are not checked.
 - **Sign-in codes**: when a message carries a one-time code or a sign-in link, buttons above it copy the code or the link.
+- **Contact card**: click the sender of an open message to see their name and address, each with a copy button.
 - **Links**: hover a link to see where it really goes, in the bottom-left corner, with the site in bold. Web addresses written as plain text are clickable.
 - **Unread first**: the Inbox and every folder list unread conversations at the top, above everything else. A conversation you open stays in place while you read it.
 - **Unread count**: shown on the taskbar button; the button flashes when new mail arrives. The number beside each mailbox counts its unread conversations in every folder except Trash and Spam.

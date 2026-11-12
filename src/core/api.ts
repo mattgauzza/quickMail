@@ -201,7 +201,11 @@ export function getThread(messageId: number, includeHidden = false) {
   if (!m) throw new Error(`No message with id ${messageId}`)
   const seen = new Set<string>()
   const emails = emailOf()
-  return all<any>(`${MSG} WHERE m.account_id=? AND m.thread_id=? ORDER BY m.date`, m.account_id, m.thread_id)
+  // Copies of one message share a date; the one kept is the copy already on disk, then one in a real folder
+  // rather than Gmail's All Mail (which is not downloaded ahead and is slow to open on the server).
+  return all<any>(
+    `${MSG} WHERE m.account_id=? AND m.thread_id=? ORDER BY m.date, m.raw = 1 DESC, f.role = 'archive', m.id`, m.account_id, m.thread_id
+  )
     .filter(r => r.id === messageId || includeHidden || !['trash', 'junk'].includes(r.role))
     .filter(r => !seen.has(r.message_id) && seen.add(r.message_id))
     .map(r => metaOf(r, emails))

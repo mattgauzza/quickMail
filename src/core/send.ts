@@ -33,7 +33,12 @@ async function transport(a: Account) {
   return nodemailer.createTransport({ host: a.smtp_host, port: a.smtp_port, secure: !!a.smtp_secure, auth } as any)
 }
 
-export async function send(d: Draft) {
+/**
+ * Send a message. The mail is delivered once the SMTP server accepts it; filing the copy in Sent and marking the
+ * original answered come after. With `background`, those run on their own so the caller (the app's Send button)
+ * is not held up by them; the CLI leaves it off so the process doesn't exit before they finish.
+ */
+export async function send(d: Draft, opts: { background?: boolean } = {}) {
   const a = account(d.from)
   const headers: Record<string, any> = {}
   if (d.replyTo) {
@@ -64,14 +69,18 @@ export async function send(d: Draft) {
 
   await (await transport(a)).sendMail({ envelope, raw })
 
-  // Keep a copy in Sent. Microsoft and Google file it themselves; everyone else needs an append.
-  const filedByServer = /office365|outlook|gmail|googlemail/i.test(a.smtp_host)
-  const sent = folderByRole(a.id, 'sent')
-  if (sent)
-    await withImap(a, async c => {
-      if (!filedByServer) await c.append(sent.path, raw, ['\\Seen'])
-      await syncFolder(c, a, sent)
-    }).catch(() => {})
-  if (d.replyTo) await setFlags([d.replyTo], { answered: true }).catch(() => {})
+  const after = async () => {
+    // Keep a copy in Sent. Microsoft and Google file it themselves; everyone else needs an append.
+    const filedByServer = /office365|outlook|gmail|googlemail/i.test(a.smtp_host)
+    const sent = folderByRole(a.id, 'sent')
+    if (sent)
+      await withImap(a, async c => {
+        if (!filedByServer) await c.append(sent.path, raw, ['\\Seen'])
+        await syncFolder(c, a, sent)
+      }).catch(() => {})
+    if (d.replyTo) await setFlags([d.replyTo], { answered: true }).catch(() => {})
+  }
+  if (opts.background) after().catch(() => {})
+  else await after()
   return { messageId, from: a.email, to: envelope.to }
 }

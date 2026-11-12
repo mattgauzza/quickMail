@@ -107,9 +107,8 @@ function LinkPeek({ href }: { href: string }) {
   return <div style={style}>{url.protocol}//<b>{url.host}</b>{rest}</div>
 }
 
-/** Copy buttons for a one-time code or sign-in link found in the message. */
-function CopyBar({ html, text }: { html: string; text: string }) {
-  const found = useMemo(() => findCodes(html, text), [html, text])
+/** Copies text to the clipboard; `copied` holds the last value copied for two seconds, to show a tick. */
+function useCopy() {
   const [copied, setCopied] = useState('')
   const copy = (value: string) => {
     navigator.clipboard.writeText(value).then(() => {
@@ -117,6 +116,50 @@ function CopyBar({ html, text }: { html: string; text: string }) {
       setTimeout(() => setCopied(c => (c === value ? '' : c)), 2000)
     }, () => { /* clipboard refused; nothing to show */ })
   }
+  return [copied, copy] as const
+}
+
+/** The sender's name and address with a copy button each, opened by clicking the sender. */
+function ContactCard({ name, address, color, onClose }: { name: string; address: string; color: string; onClose: () => void }) {
+  const [copied, copy] = useCopy()
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    // Clicks on the sender line itself are left to its own toggle, so a second click closes the card.
+    const away = (e: MouseEvent) => { if (!ref.current?.parentElement?.contains(e.target as Node)) onClose() }
+    // Escape closes the card, not the conversation behind it.
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') (e.stopPropagation(), onClose()) }
+    window.addEventListener('mousedown', away)
+    window.addEventListener('keydown', key, true)
+    return () => { window.removeEventListener('mousedown', away); window.removeEventListener('keydown', key, true) }
+  }, [])
+  const line = (label: string, value: string) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', userSelect: 'text' }} title={value}>{value}</span>
+      <IconButton icon={copied === value ? 'check' : 'copy'} size={18} label={copied === value ? 'Copied' : `Copy ${label}`} onClick={() => copy(value)} />
+    </div>
+  )
+  return (
+    <div
+      ref={ref} onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}
+      style={{
+        position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 20, width: 340, maxWidth: '80vw', padding: '14px 10px 10px 16px',
+        borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--line)', boxShadow: 'var(--shadow)', cursor: 'default', fontWeight: 400
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+        <span className="avatar" style={{ background: color }}>{(name || address)[0]?.toUpperCase() ?? '?'}</span>
+        <b style={{ fontSize: 15, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name || address}</b>
+      </div>
+      {name && line('name', name)}
+      <div className="muted">{line('email address', address)}</div>
+    </div>
+  )
+}
+
+/** Copy buttons for a one-time code or sign-in link found in the message. */
+function CopyBar({ html, text }: { html: string; text: string }) {
+  const found = useMemo(() => findCodes(html, text), [html, text])
+  const [copied, copy] = useCopy()
   if (!found.codes.length && !found.links.length) return null
   const row = { display: 'flex', gap: 8, flexWrap: 'wrap' as const, margin: '0 0 8px' }
   return (
@@ -196,15 +239,25 @@ function Card(p: { meta: Meta; open: boolean; toggle: () => void; onCompose: (c:
   }, [p.open, meta.id])
 
   const name = who(meta.from)
+  const [contact, setContact] = useState(false)
   return (
     <article className={`card${p.open ? ' open' : ''}`}>
       <header onClick={p.toggle} title={p.open ? 'Click to collapse this message' : 'Click to show this message'}>
         <span className="avatar" title={meta.from.address} style={{ background: avatarColor(meta.from.address) }}>{name[0]?.toUpperCase() ?? '?'}</span>
-        <div className="who">
-          <div>
+        <div className="who" style={{ position: 'relative' }}>
+          <div
+            className={p.open ? 'sender' : undefined}
+            title={p.open ? 'Show contact card' : undefined}
+            // On an open message, clicking the sender opens (or closes) the contact card instead of collapsing the message.
+            onClick={e => p.open && (e.stopPropagation(), setContact(c => !c))}
+            onMouseDown={e => p.open && e.detail > 1 && e.preventDefault()} // a quick second click shouldn't select the text
+          >
             <b title={meta.from.address}>{name}</b>
             {p.open && <span className="addr">&lt;{meta.from.address}&gt;</span>}
           </div>
+          {contact && p.open && (
+            <ContactCard name={meta.from.name} address={meta.from.address} color={avatarColor(meta.from.address)} onClose={() => setContact(false)} />
+          )}
           <div className="sub" title={p.open ? [...meta.to, ...meta.cc].map(x => x.address).join(', ') : undefined}>{p.open ? `to ${[...meta.to, ...meta.cc].map(who).join(', ') || 'undisclosed recipients'}` : meta.snippet}</div>
         </div>
         <time title={longDate(meta.date)}>{p.open ? longDate(meta.date) : shortDate(meta.date)}</time>

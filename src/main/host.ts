@@ -11,7 +11,8 @@ const METHODS: Record<string, (...a: any[]) => unknown> = {
   // What the window may call (the main process checks the name against its own list first).
   listAccounts: api.listAccounts, listFolders: api.listFolders, listThreads: api.listThreads, getThread: api.getThread,
   getMessage: api.getMessage, setFlags: api.setFlags, moveMessages: api.moveMessages, deleteMessages: api.deleteMessages,
-  send: api.send, searchContacts: api.searchContacts, importAccounts: api.importAccounts, importContacts: api.importContacts,
+  // The window's Send returns once the mail is delivered; filing in Sent and the answered flag follow on their own.
+  send: (d: Parameters<typeof api.send>[0]) => api.send(d, { background: true }), searchContacts: api.searchContacts, importAccounts: api.importAccounts, importContacts: api.importContacts,
   importPasswords: api.importPasswords, setPassword: api.setPassword, removeAccount: api.removeAccount,
   countThreads: api.countThreads, addMailbox: api.addMailbox, respondInvite: api.respondInvite, listMessages: api.listMessages,
   listRules: api.listRules, saveRule: api.saveRule, removeRule: api.removeRule, applyRules: api.applyRules,
