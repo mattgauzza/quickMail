@@ -67,8 +67,9 @@ function SignIn({ account, onDone }: { account: Account; onDone: () => void }) {
     setError('')
     try {
       await fn()
-      await window.qm.invoke('refresh', account.id)
+      // Signed in: the banner can go now. The first sync of a big mailbox takes minutes, so it runs in the background.
       onDone()
+      window.qm.invoke('refresh', account.id).catch(() => {})
     } catch (e) {
       setError(clean(e))
     }
