@@ -140,33 +140,43 @@ const owner = (e: Electron.IpcMainInvokeEvent) => BrowserWindow.fromWebContents(
 
 let badged = -1
 
-/** Unread inbox count on the taskbar button (and in the window title); the button flashes when new mail lands while you're elsewhere. */
+/**
+ * Unread inbox count on the taskbar button (and in the window title); the button flashes when new mail lands while
+ * you're elsewhere. The badge is put on the taskbar again on every call, changed or not: Windows has been seen
+ * holding on to an old number after it was cleared, and this way the next check for mail (a minute at most) puts it right.
+ */
+const badgeIcons = new Map<string, Electron.NativeImage>()
 async function badge() {
   if (!win) return
   const n = await ui.call<number>('unreadInbox')
   if (!win) return
-  if (n === badged) return
-  const more = badged >= 0 && n > badged
-  badged = n
-  win.setTitle(n ? `(${n}) quickMail` : 'quickMail')
-  if (more && !win.isFocused()) win.flashFrame(true)
-  if (process.platform !== 'win32') return void app.setBadgeCount(n) // dock badge on macOS, launcher badge on Linux
+  if (n !== badged) {
+    const more = badged >= 0 && n > badged
+    badged = n
+    win.setTitle(n ? `(${n}) quickMail` : 'quickMail')
+    if (more && !win.isFocused()) win.flashFrame(true)
+    if (process.platform !== 'win32') app.setBadgeCount(n) // dock badge on macOS, launcher badge on Linux
+  }
+  if (process.platform !== 'win32') return
   if (!n) return win.setOverlayIcon(null, '')
   const text = n > 99 ? '99+' : String(n)
-  const url: string = await win.webContents.executeJavaScript(`(() => {
-    const c = document.createElement('canvas'); c.width = c.height = 32
-    const x = c.getContext('2d')
-    x.fillStyle = '#d93025'; x.beginPath(); x.arc(16, 16, 16, 0, 7); x.fill()
-    x.fillStyle = '#fff'; x.font = 'bold ${text.length > 2 ? 14 : text.length > 1 ? 19 : 23}px Segoe UI'
-    x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('${text}', 16, 17)
-    return c.toDataURL()
-  })()`)
-  // Drawing the number takes a moment; if the count changed meanwhile (mail read straight away), a newer call
-  // already set the right badge and this one must not paint its stale number over it.
-  if (n !== badged) return
-  win?.setOverlayIcon(nativeImage.createFromDataURL(url), `${n} unread`)
+  let icon = badgeIcons.get(text)
+  if (!icon) {
+    const url: string = await win.webContents.executeJavaScript(`(() => {
+      const c = document.createElement('canvas'); c.width = c.height = 32
+      const x = c.getContext('2d')
+      x.fillStyle = '#d93025'; x.beginPath(); x.arc(16, 16, 16, 0, 7); x.fill()
+      x.fillStyle = '#fff'; x.font = 'bold ${text.length > 2 ? 14 : text.length > 1 ? 19 : 23}px Segoe UI'
+      x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('${text}', 16, 17)
+      return c.toDataURL()
+    })()`)
+    badgeIcons.set(text, (icon = nativeImage.createFromDataURL(url)))
+  }
+  win?.setOverlayIcon(icon, `${n} unread`)
 }
-const rebadge = () => badge().catch(() => {})
+// One at a time, in the order asked for, so an older count can never be painted after a newer one.
+let badging: Promise<void> = Promise.resolve()
+const rebadge = () => (badging = badging.then(badge).catch(() => {}))
 
 // Shown inside quickMail. Everything else goes to the program Windows uses for it, except RISKY types.
 const PREVIEW = new Set(['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'txt', 'log', 'csv', 'md', 'json'])

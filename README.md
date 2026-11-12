@@ -6,6 +6,25 @@ A fast, Gmail-style mail client for Windows (with new macOS and Linux builds), p
 - All mailboxes in one inbox, with unread counts on the taskbar.
 - Everything is stored on your PC. quickMail has no server and sends nothing anywhere except to your own mail providers.
 
+## A full CLI, built for agents
+
+Reading, searching, sending, filing, attachments, contacts and sorting rules are all available from the terminal. Installing quickMail puts `quickmail` (alias `qm`) on your PATH; it works on the same local mail store as the app, across every mailbox at once, with no API keys and no cost per call.
+
+```
+quickmail list --unread --json                          # what is new, in every mailbox
+quickmail search "from:stripe has:attachment newer_than:30d" --json
+quickmail read 1234 --json                              # text, html, attachments
+quickmail send --from you@example.com --reply-to 1234 --body "Thanks!"
+quickmail senders -n 50                                 # who fills the inbox
+quickmail move 1234 1235 --to Money/Receipts --create   # also: archive, trash, mark
+quickmail rules add --from stripe.com --move Money/Receipts --read
+quickmail download 1234 -o ./invoices                   # save attachments
+```
+
+- **Agent friendly**: every command takes `--json`, errors exit non-zero with `{"error": "..."}`, ids can be piped in on standard input, and `quickmail --help` documents everything.
+- **Whole mailbox, not a sample**: search runs on a local full-text index, so an agent can go through tens of thousands of messages in seconds.
+- **Ready-made prompts**: [Things to ask an agent](#things-to-ask-an-agent) has copy-able requests for sorting an inbox, setting up rules, a morning briefing, unsubscribing and more. The full reference is under [Command line](#command-line-for-agents-and-scripts).
+
 ![All mailboxes in one inbox, unread first](docs/screenshots/inbox.png)
 
 | Reading pane beside the list | Search as you type |
@@ -24,6 +43,7 @@ So quickMail is two things that share one local mail store: an app that works th
 
 ## Contents
 
+- [A full CLI, built for agents](#a-full-cli-built-for-agents)
 - [Why I built it](#why-i-built-it)
 - [Install](#install)
 - [Add your mailboxes](#add-your-mailboxes)
