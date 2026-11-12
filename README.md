@@ -127,14 +127,14 @@ Google requires every mail app to identify itself, and does not offer a shared i
    - **User support email**: pick your address from the dropdown
    - **Audience**: **External**
    - **Contact information**: your email address
-   - **App domain** (on the same Branding page, further down): fill in these three links. Google will not let you publish until the home page and privacy policy are filled in.
-     - **Application home page**: `https://github.com/mattgauzza/quickMail`
-     - **Application privacy policy link**: `https://github.com/mattgauzza/quickMail/blob/main/PRIVACY.md`
-     - **Application terms of service link**: `https://github.com/mattgauzza/quickMail/blob/main/TERMS.md`
-     - **Authorized domains** (same page, below): add `github.com`. Google requires every domain used by the links above to be listed here.
-5. Under **Audience**, click **Publish app**. (If you leave it in "Testing", Google signs you out every 7 days.)
-6. Open **Clients** (<https://console.cloud.google.com/auth/clients>) → **Create client** → application type **Desktop app** → **Create**. Copy the **Client ID** and **Client secret**.
-7. Open a terminal and save them in quickMail:
+5. Open the **Branding** page (<https://console.cloud.google.com/auth/branding>) and fill in **App domain**:
+   - **Application home page**, **Application privacy policy link** and **Application terms of service link**: addresses on a domain you own (see *Publishing the app* below). Google will not publish the app without the home page and privacy policy.
+   - **Authorized domains**: add that domain.
+6. Open **Audience** and choose one:
+   - **Testing** (the default) is fine for yourself and a few people; see *Publishing the app* below.
+   - **Publish app** removes the 7-day sign-out.
+7. Open **Clients** (<https://console.cloud.google.com/auth/clients>) → **Create client** → application type **Desktop app** → **Create**. Copy the **Client ID** and **Client secret**.
+8. Open a terminal and save them in quickMail:
 
    ```
    qmail accounts google-client <client-id> <client-secret>
@@ -142,20 +142,26 @@ Google requires every mail app to identify itself, and does not offer a shared i
 
    They are stored in your system's credential store (Windows Credential Manager, macOS Keychain or the Linux keyring).
 
+### Publishing the app (optional)
+
+In **Testing**, Google signs you out every 7 days, so you would sign in to each Gmail account again each week. To avoid that, click **Publish app** on the Audience page. Google asks for a home page and a privacy policy first, at addresses on a domain you own. Host them anywhere you like; the drafts are `PRIVACY.md` and `TERMS.md` in this repository. Google may also ask you to verify that domain in [Google Search Console](https://search.google.com/search-console).
+
+Publishing does not remove the "Google hasn't verified this app" warning. Only Google's verification does, and that needs a separate review because quickMail asks for full access to Gmail.
+
 **Sharing one setup.** You only do the Google Cloud steps once. The same client ID and secret work:
 
 - for every Gmail account you add on that PC;
 - on your other computers: run the `qmail accounts google-client` command there with the same two values;
 - for other people (family, a small team): give them the two values and they run the same command, then add their own Gmail account. They sign in to their own mailbox; the client does not give them any access to yours, and it does not give you access to theirs.
 
-Google allows up to 100 different Google accounts to sign in through an unverified app like this. Beyond that, the app has to go through Google's verification. Only share the values with people you trust, since anyone holding them can present their own app to Google under your app's name.
+Google allows up to 100 different Google accounts to sign in through an app that is not verified. Beyond that, the app has to go through Google's verification. Only share the values with people you trust, since anyone holding them can present their own app to Google under your app's name.
 
 ### Add the Gmail account
 
 1. In quickMail, click **+** next to **Mailboxes**.
 2. Enter the Gmail address and tick **Gmail / Google account**.
 3. Click **Add mailbox**. Your browser opens on Google's sign-in page.
-4. Google shows "Google hasn't verified this app", because the app identity is your own and has not been reviewed by Google. Click **Advanced → Go to quickMail**, then **Continue**.
+4. Google shows "Google hasn't verified this app", because the app identity is your own and has not been reviewed by Google. Click **Advanced → Go to quickMail (unsafe)**, then **Continue**. Google shows this warning until it verifies the app.
 5. When the browser says you are signed in, go back to quickMail.
 
 From a terminal the same thing is:
