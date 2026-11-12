@@ -202,7 +202,10 @@ quickmail send --from you@example.com --forward 1234 --to c@d.com
 quickmail mark 1234 1235 --read                      # or --unread --star --unstar
 quickmail archive 1234
 quickmail trash 1234
-quickmail move 1234 --to Receipts
+quickmail move 1234 --to Receipts                    # add --create to make the folder (Gmail: the label)
+quickmail senders -f inbox -n 50                     # who the mail is from, biggest senders first
+quickmail list --oldest -n 100 --json                # oldest first
+quickmail list --oldest -n 500 --json | ... | quickmail archive -   # "-" reads ids from standard input
 quickmail attachments 1234
 quickmail download 1234 -o ./out                     # -i 0 for just the first attachment
 quickmail contacts ava                               # search contacts
@@ -225,6 +228,61 @@ Notes for agents:
 - Message ids are local numbers from `list` and `search`. A message gets a new id when it moves to another folder.
 - Run `quickmail sync` first if the app is not open.
 - `send` really sends. There is no draft or confirmation step.
+- For hundreds of messages, pass ids on standard input (`quickmail move - --to X`) in batches of about 200.
+- `trash` moves to the mailbox's Trash, which the mail provider empties on its own schedule (Gmail: 30 days). `trash --permanent` cannot be undone.
+
+### Things to ask an agent
+
+Any agent that can run terminal commands (Claude Code, Codex, Cursor and the like) can use the CLI. Tell it once that `quickmail` is installed and that `quickmail --help` lists everything, then copy one of these.
+
+**Sort an overflowing inbox into folders**
+
+```
+Use the quickmail CLI to clean up my inbox for you@gmail.com.
+1. Run `quickmail senders -a you@gmail.com --oldest --scan 5000 -n 300 --json` to see who the oldest 5,000 messages are from,
+   and `quickmail folders -a you@gmail.com` to see the folders I already have.
+2. Propose a plan: which senders go to which folder (reuse my folders, add as few new ones as possible),
+   which senders are junk to delete, and that everything else is archived. Leave starred mail alone.
+3. Show me the plan and the list of junk senders, and wait for my OK.
+4. Then get the ids with `quickmail list -a you@gmail.com --oldest -n 5000 --json` and apply the plan in batches of 200:
+   `quickmail move - --to "Folder" --create`, `quickmail archive -`, `quickmail trash -` (ids on standard input).
+5. Finish with `quickmail sync -a you@gmail.com --no-bodies` and `quickmail folders -a you@gmail.com`, and tell me the before and after counts.
+```
+
+**Morning briefing**
+
+```
+Run `quickmail sync`, then `quickmail list --unread --json`. Read anything that looks like it needs me with `quickmail read <id> --json`.
+Give me a short list: what needs a reply today, what is only for information, and what I can ignore. Do not mark anything read.
+```
+
+**Unsubscribe candidates**
+
+```
+Run `quickmail senders --since 90d -n 200 --json`. List the senders that look like newsletters or marketing, with how many messages each sent,
+biggest first. For the ones I pick, find the unsubscribe link with `quickmail read <id> --json`, and trash their old mail with `quickmail trash -`.
+```
+
+**Find a document**
+
+```
+Find the most recent invoice from Acme: `quickmail search "from:acme has:attachment invoice" --json`,
+then `quickmail attachments <id>` and `quickmail download <id> -o ./invoices`. Tell me the amount and due date.
+```
+
+**Draft replies for me to approve**
+
+```
+For each unread message in `quickmail list --unread --json` that is a direct question to me, read the thread with `quickmail thread <id>`
+and write a reply. Show me every reply first. Send only the ones I approve, with
+`quickmail send --from <the mailbox it arrived in> --reply-to <id> --body-file reply.txt`.
+```
+
+**Clear out old noise**
+
+```
+Run `quickmail search "older_than:2y is:read in:inbox" -n 2000 --json`. Group by sender, show me the groups, and archive the ones I agree to with `quickmail archive -`.
+```
 
 ## Where your data lives
 

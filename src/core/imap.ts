@@ -455,8 +455,11 @@ export async function setFlags(ids: number[], f: { seen?: boolean; flagged?: boo
   }
 }
 
-/** Move messages to a folder given by role, path or name. "archive" is created if the account has none. */
-export async function moveMessages(ids: number[], dest: string) {
+/**
+ * Move messages to a folder given by role, path or name. "archive" is created if the account has none;
+ * with create=true any other missing folder (a Gmail label, e.g. "Money/Receipts") is created too.
+ */
+export async function moveMessages(ids: number[], dest: string, create = false) {
   const groups = locate(ids)
   dropMessages(ids)
   changed()
@@ -469,6 +472,11 @@ export async function moveMessages(ids: number[], dest: string) {
         await c.mailboxCreate(nested ? `${inbox?.path ?? 'INBOX'}${nested.path[5]}Archive` : 'Archive')
         await syncFolderList(c, a)
         target = findFolder(a.id, 'archive')
+      }
+      if (!target && create) {
+        await c.mailboxCreate(dest)
+        await syncFolderList(c, a)
+        target = findFolder(a.id, dest)
       }
       if (!target) throw new Error(`${a.email} has no folder "${dest}"`)
       if (target.id === g[0].folder_id) throw new Error(`Already in ${target.name}`)

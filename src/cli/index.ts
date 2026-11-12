@@ -16,7 +16,8 @@ program
 
 const json = () => !!program.opts().json
 // Accepts ids as separate arguments, or space/comma separated inside one argument.
-const ids = (xs: string[]) => xs.flatMap(x => x.split(/[\s,]+/)).filter(Boolean).map(x => {
+// Ids come as arguments, comma-separated, or with "-" from standard input (for lists too long for a command line).
+const ids = (xs: string[]) => xs.flatMap(x => (x === '-' ? fs.readFileSync(0, 'utf8') : x).split(/[\s,]+/)).filter(Boolean).map(x => {
   const n = Number(x)
   if (!Number.isInteger(n)) throw new Error(`"${x}" is not a message id`)
   return n
@@ -174,9 +175,10 @@ const viewOpts = (c: Command) =>
     .option('-n, --limit <n>', 'how many', '25')
     .option('--offset <n>', 'skip this many', '0')
     .option('--threads', 'group into conversations')
+    .option('--oldest', 'oldest first instead of newest first (single messages only)')
 
 function show(q: string | undefined, o: any, folder?: string) {
-  const view: api.View = { account: o.account, folder: o.folder ?? folder, unread: o.unread, starred: o.starred, since: since(o.since), query: q }
+  const view: api.View = { account: o.account, folder: o.folder ?? folder, unread: o.unread, starred: o.starred, since: since(o.since), query: q, oldest: o.oldest }
   const rows = (o.threads ? api.listThreads : api.listMessages)(view, Number(o.limit), Number(o.offset)) as any[]
   out(rows, () =>
     rows.length
@@ -186,6 +188,14 @@ function show(q: string | undefined, o: any, folder?: string) {
       : 'No mail matches.'
   )
 }
+
+viewOpts(program.command('senders').description('who the mail is from, biggest senders first (default: inbox of every account)'))
+  .option('--scan <n>', 'only look at this many messages (the newest, or with --oldest the oldest)', '0')
+  .action(o => {
+    const view: api.View = { account: o.account, folder: o.folder ?? 'inbox', unread: o.unread, starred: o.starred, since: since(o.since), oldest: o.oldest }
+    const rows = api.listSenders(view, Number(o.limit), Number(o.scan))
+    out(rows, () => rows.map(s => `${String(s.count).padStart(5)}  ${cut(s.address, 38)} ${cut(s.name, 24)} ${cut(s.subject, 40)}`).join('\n') || 'No mail matches.')
+  })
 
 viewOpts(program.command('list').description('list mail, newest first (default: inbox of every account)')).action(o => show(undefined, o, 'inbox'))
 viewOpts(
@@ -275,21 +285,25 @@ program
   .action(async (xs, o) => {
     const f = { seen: o.read ? true : o.unread ? false : undefined, flagged: o.star ? true : o.unstar ? false : undefined }
     if (f.seen === undefined && f.flagged === undefined) throw new Error('Say what to change: --read, --unread, --star or --unstar')
-    await api.setFlags(ids(xs), f)
-    out({ ok: true, ids: ids(xs) }, () => `Updated ${xs.length} message(s)`)
+    const list = ids(xs)
+    await api.setFlags(list, f)
+    out({ ok: true, ids: list }, () => `Updated ${list.length} message(s)`)
   })
 
-program.command('move <ids...>').description('move messages to a folder').requiredOption('--to <folder>', 'inbox, archive, spam, trash, or a folder name').action(async (xs, o) => {
-  await api.moveMessages(ids(xs), o.to)
-  out({ ok: true, ids: ids(xs), to: o.to }, () => `Moved ${xs.length} message(s) to ${o.to}`)
+program.command('move <ids...>').description('move messages to a folder ("-" reads ids from standard input)').requiredOption('--to <folder>', 'inbox, archive, spam, trash, or a folder name').option('--create', 'make the folder (Gmail: the label) if it does not exist').action(async (xs, o) => {
+  const list = ids(xs)
+  await api.moveMessages(list, o.to, !!o.create)
+  out({ ok: true, ids: list, to: o.to }, () => `Moved ${list.length} message(s) to ${o.to}`)
 })
 program.command('archive <ids...>').description('move messages out of the inbox into Archive').action(async xs => {
-  await api.moveMessages(ids(xs), 'archive')
-  out({ ok: true, ids: ids(xs) }, () => `Archived ${xs.length} message(s)`)
+  const list = ids(xs)
+  await api.moveMessages(list, 'archive')
+  out({ ok: true, ids: list }, () => `Archived ${list.length} message(s)`)
 })
 program.command('trash <ids...>').description('move messages to Trash').option('--permanent', 'delete for good instead').action(async (xs, o) => {
-  await api.deleteMessages(ids(xs), !!o.permanent)
-  out({ ok: true, ids: ids(xs) }, () => `${o.permanent ? 'Deleted' : 'Trashed'} ${ids(xs).length} message(s)`)
+  const list = ids(xs)
+  await api.deleteMessages(list, !!o.permanent)
+  out({ ok: true, ids: list }, () => `${o.permanent ? 'Deleted' : 'Trashed'} ${list.length} message(s)`)
 })
 
 // ---------- attachments, contacts, sms ----------

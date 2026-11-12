@@ -161,6 +161,9 @@ async function badge() {
     x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('${text}', 16, 17)
     return c.toDataURL()
   })()`)
+  // Drawing the number takes a moment; if the count changed meanwhile (mail read straight away), a newer call
+  // already set the right badge and this one must not paint its stale number over it.
+  if (n !== badged) return
   win?.setOverlayIcon(nativeImage.createFromDataURL(url), `${n} unread`)
 }
 const rebadge = () => badge().catch(() => {})

@@ -24,6 +24,8 @@ export interface View {
   query?: string
   /** Only mail on or after this time (ms since epoch). */
   since?: number
+  /** Single messages only (listMessages): oldest first instead of newest first. */
+  oldest?: boolean
   /** Conversations only: keep those with ('unread') or without ('read') any unread message. */
   state?: 'unread' | 'read'
 }
@@ -157,7 +159,7 @@ export function listMessages(v: View = {}, limit = 50, offset = 0) {
     `SELECT m.id, m.account_id, m.thread_id, m.date, m.seen, m.flagged, m.has_attachments, m.subject, m.snippet,
             m.from_name, m.from_addr, m.to_json, f.name AS folder, MIN((f.role = 'archive') * 1000000000000 + m.id) AS pick
      FROM messages m JOIN folders f ON f.id=m.folder_id WHERE ${sql}
-     GROUP BY m.account_id, ${ONE} ORDER BY m.date DESC LIMIT ? OFFSET ?`,
+     GROUP BY m.account_id, ${ONE} ORDER BY m.date ${v.oldest ? 'ASC' : 'DESC'} LIMIT ? OFFSET ?`,
     ...params, limit, offset
   ).map(r => ({
     id: r.id as number, account: emails.get(r.account_id)!, threadId: r.thread_id as string, date: r.date as number,
@@ -165,6 +167,19 @@ export function listMessages(v: View = {}, limit = 50, offset = 0) {
     snippet: r.snippet as string, from: person(r.from_name, r.from_addr),
     to: JSON.parse(r.to_json) as { name: string; address: string }[], folder: r.folder as string
   }))
+}
+
+/** Who the mail in a view is from, biggest senders first: the starting point for cleaning up a mailbox. */
+export function listSenders(v: View = {}, limit = 50, scan = 0) {
+  const { sql, params } = where(v)
+  // scan > 0 looks only at that many messages of the view (the oldest ones with v.oldest, else the newest).
+  const pick = scan > 0 ? `m.id IN (SELECT m.id FROM messages m WHERE ${sql} ORDER BY m.date ${v.oldest ? 'ASC' : 'DESC'} LIMIT ${Math.floor(scan)})` : sql
+  return all<{ address: string; name: string; count: number; unread: number; first: number; last: number; subject: string }>(
+    `SELECT m.from_addr AS address, MAX(m.from_name) AS name, COUNT(*) AS count, SUM(1-m.seen) AS unread,
+            MIN(m.date) AS first, MAX(m.date) AS last, MAX(m.subject) AS subject
+     FROM messages m WHERE ${pick} GROUP BY m.from_addr ORDER BY count DESC LIMIT ?`,
+    ...params, limit
+  )
 }
 
 const metaOf = (r: any, emails = emailOf()) => ({
