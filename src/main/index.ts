@@ -132,7 +132,7 @@ const bg = new Host('bg', onEvent('bg'))
 const METHODS = new Set([
   'listAccounts', 'listFolders', 'listThreads', 'getThread', 'getMessage', 'setFlags', 'moveMessages', 'deleteMessages',
   'send', 'searchContacts', 'importAccounts', 'importContacts', 'importPasswords', 'setPassword', 'removeAccount',
-  'countThreads', 'addMailbox', 'respondInvite', 'listMessages'
+  'countThreads', 'addMailbox', 'respondInvite', 'listMessages', 'listRules', 'saveRule', 'removeRule', 'applyRules'
 ])
 
 const broadcast = (channel: string, ...args: unknown[]) => BrowserWindow.getAllWindows().forEach(w => w.webContents.send(channel, ...args))
@@ -333,6 +333,7 @@ else {
 
     nativeTheme.on('updated', () => BrowserWindow.getAllWindows().forEach(w => { try { w.setTitleBarOverlay(overlay()) } catch { /* not on macOS */ } }))
 
+    ipcMain.handle('version', () => app.getVersion())
     ipcMain.handle('updateState', () => updateReady)
     ipcMain.handle('installUpdate', () => updateReady && autoUpdater.quitAndInstall())
     installCli()

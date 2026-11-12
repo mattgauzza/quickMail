@@ -197,6 +197,74 @@ viewOpts(program.command('senders').description('who the mail is from, biggest s
     out(rows, () => rows.map(s => `${String(s.count).padStart(5)}  ${cut(s.address, 38)} ${cut(s.name, 24)} ${cut(s.subject, 40)}`).join('\n') || 'No mail matches.')
   })
 
+// ---------- sorting rules ----------
+
+const ruleLine = (r: api.Rule) => {
+  const when = [r.from && `from~"${r.from}"`, r.subject && `subject~"${r.subject}"`, r.to && `to~"${r.to}"`].filter(Boolean).join(' and ')
+  const scope = r.account === null ? 'all mailboxes' : api.account(r.account).email
+  const what = (r.action === 'move' ? `move to ${r.folder}` : r.action) + (r.alsoRead ? ' +read' : '')
+  return `${String(r.id).padStart(3)} ${r.enabled ? 'on ' : 'off'} ${cut(scope, 24)} ${when}  ->  ${what}  (${r.hits} sorted)`
+}
+const ruleOpts = (c: Command) =>
+  c
+    .option('-a, --account <account>', 'limit the rule to one mailbox ("all" for every mailbox)')
+    .option('--from <text>', "part of the sender's name or address; commas mean any of")
+    .option('--subject <text>', 'words in the subject; commas mean any of')
+    .option('--to <text>', "part of a recipient's address")
+    .option('--move <folder>', 'move matching mail to this folder (created if missing)')
+    .option('--archive', 'archive matching mail')
+    .option('--trash', 'move matching mail to Trash')
+    .option('--read', 'mark matching mail as read (alone, or together with --move / --archive)')
+    .option('--star', 'star matching mail')
+const ruleInput = (o: any) => {
+  const action = o.move ? 'move' : o.archive ? 'archive' : o.trash ? 'trash' : o.star ? 'star' : o.read ? 'read' : undefined
+  return {
+    account: o.account, from: o.from, subject: o.subject, to: o.to, action: action as api.Rule['action'] | undefined,
+    folder: o.move as string | undefined, alsoRead: action && action !== 'read' ? !!o.read : undefined
+  }
+}
+
+const rules = program.command('rules').description('sorting rules: what to do with mail as it arrives in an inbox')
+rules.command('list', { isDefault: true }).description('show the rules, in the order they are tried').action(() => {
+  const rows = api.listRules()
+  out(rows, () => (rows.length ? rows.map(ruleLine).join('\n') : 'No rules yet. Add one: quickmail rules add --from stripe.com --move Receipts'))
+})
+ruleOpts(rules.command('add').description('add a rule, e.g. --from stripe.com --move Money/Receipts --read')).action(o => {
+  const input = ruleInput(o)
+  if (!input.action) throw new Error('Say what to do with matching mail: --move <folder>, --archive, --trash, --read or --star')
+  const r = api.saveRule(input)
+  out(r, () => `Added rule ${ruleLine(r).trim()}`)
+})
+ruleOpts(rules.command('edit <id>').description('change a rule; only the options you give are changed')).action((id, o) => {
+  const r = api.saveRule({ id: Number(id), ...Object.fromEntries(Object.entries(ruleInput(o)).filter(([, v]) => v !== undefined)) })
+  out(r, () => `Changed rule ${ruleLine(r).trim()}`)
+})
+rules.command('enable <id>').description('switch a rule on').action(id => {
+  const r = api.saveRule({ id: Number(id), enabled: true })
+  out(r, () => `Rule ${r.id} is on`)
+})
+rules.command('disable <id>').description('switch a rule off without removing it').action(id => {
+  const r = api.saveRule({ id: Number(id), enabled: false })
+  out(r, () => `Rule ${r.id} is off`)
+})
+rules.command('remove <id>').description('delete a rule').action(id => {
+  api.removeRule(Number(id))
+  out({ ok: true, id: Number(id) }, () => `Removed rule ${id}`)
+})
+rules
+  .command('run')
+  .description('apply the rules to mail already in the inbox (they otherwise only act on new mail)')
+  .option('--rule <id>', 'only this rule')
+  .option('--dry-run', 'only count what would be sorted')
+  .action(async o => {
+    const res = await api.applyRules({ rule: o.rule ? Number(o.rule) : undefined, dryRun: !!o.dryRun })
+    out(res.map(r => ({ id: r.rule.id, matched: r.matched, error: r.error })), () =>
+      res.length
+        ? res.map(r => `${String(r.rule.id).padStart(3)} ${String(r.matched).padStart(6)} ${o.dryRun ? 'would be sorted' : r.error ? `FAILED: ${r.error}` : 'sorted'}`).join('\n')
+        : 'No rules are switched on.')
+    if (res.some(r => r.error)) process.exitCode = 1
+  })
+
 viewOpts(program.command('list').description('list mail, newest first (default: inbox of every account)')).action(o => show(undefined, o, 'inbox'))
 viewOpts(
   program.command('search <query...>').description('full-text search. Operators: from: to: subject: in: is:unread is:starred has:attachment')

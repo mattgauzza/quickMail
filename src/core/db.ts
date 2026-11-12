@@ -109,6 +109,19 @@ CREATE TABLE IF NOT EXISTS contacts (
   last_used INTEGER NOT NULL DEFAULT 0,
   source TEXT NOT NULL DEFAULT 'mail'
 );
+CREATE TABLE IF NOT EXISTS rules (
+  id INTEGER PRIMARY KEY,
+  account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE, -- NULL = every mailbox
+  from_text TEXT NOT NULL DEFAULT '',
+  subject_text TEXT NOT NULL DEFAULT '',
+  to_text TEXT NOT NULL DEFAULT '',
+  action TEXT NOT NULL DEFAULT 'move',
+  folder TEXT NOT NULL DEFAULT '',
+  also_read INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  position INTEGER NOT NULL DEFAULT 0,
+  hits INTEGER NOT NULL DEFAULT 0
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(subject, sender, recipients, body, tokenize='porter unicode61');
 `
 

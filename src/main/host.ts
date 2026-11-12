@@ -14,6 +14,7 @@ const METHODS: Record<string, (...a: any[]) => unknown> = {
   send: api.send, searchContacts: api.searchContacts, importAccounts: api.importAccounts, importContacts: api.importContacts,
   importPasswords: api.importPasswords, setPassword: api.setPassword, removeAccount: api.removeAccount,
   countThreads: api.countThreads, addMailbox: api.addMailbox, respondInvite: api.respondInvite, listMessages: api.listMessages,
+  listRules: api.listRules, saveRule: api.saveRule, removeRule: api.removeRule, applyRules: api.applyRules,
   // What the main process itself needs.
   unreadInbox: api.unreadInbox,
   saveAttachment: api.saveAttachment,

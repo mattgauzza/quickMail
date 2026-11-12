@@ -134,7 +134,8 @@ function hasAttachment(node: any): boolean {
   return node.disposition === 'attachment' || (!!named && node.disposition !== 'inline')
 }
 
-function insertMessage(a: Account, f: Folder, m: any) {
+/** Stores one message's headers. Returns its new id, or 0 when it was already there. */
+function insertMessage(a: Account, f: Folder, m: any): number {
   const env = m.envelope || {}
   const from = addr(env.from?.[0])
   const to = (env.to || []).map(addr)
@@ -168,7 +169,7 @@ function insertMessage(a: Account, f: Folder, m: any) {
     JSON.stringify(to), JSON.stringify(cc), date, m.size || 0,
     +flags.has('\\Seen'), +flags.has('\\Flagged'), +flags.has('\\Answered'), +hasAttachment(m.bodyStructure)
   )
-  if (!res.changes) return
+  if (!res.changes) return 0
   run(
     'INSERT INTO fts(rowid, subject, sender, recipients, body) VALUES(?,?,?,?,?)',
     res.lastInsertRowid, env.subject || '', `${from.name} ${from.address}`,
@@ -185,15 +186,23 @@ function insertMessage(a: Account, f: Folder, m: any) {
       p.address, p.name, p.uses, date
     )
   }
+  return Number(res.lastInsertRowid)
 }
 
-/** Bring one folder's message list and flags in line with the server. Returns the number of new messages. */
-export async function syncFolder(c: ImapFlow, a: Account, f: Folder): Promise<number> {
+/**
+ * Bring one folder's message list and flags in line with the server. Returns the number of new messages.
+ * Mail that newly arrived in an inbox is also noted in `arrived` (for the sorting rules): only for a folder that
+ * was synced before, and only mail dated after the previous check, so a first download of a mailbox or a
+ * message someone moved back into the inbox is not mistaken for new mail.
+ */
+export async function syncFolder(c: ImapFlow, a: Account, f: Folder, arrived?: number[]): Promise<number> {
   const lock = await c.getMailboxLock(f.path)
   try {
     const mb = c.mailbox as any
     const state = `${mb.uidValidity}:${mb.uidNext}:${mb.exists}:${mb.highestModseq ?? ''}`
     if (mb.highestModseq && state === f.sync_state) return 0
+    const watch = arrived && f.role === 'inbox' && !!f.sync_state && f.sync_state.split(':')[0] === String(mb.uidValidity)
+    const newerThan = a.last_sync - 15 * 60_000
     if (f.sync_state && f.sync_state.split(':')[0] !== String(mb.uidValidity))
       dropMessages(all<{ id: number }>('SELECT id FROM messages WHERE folder_id=?', f.id).map(r => r.id))
 
@@ -220,7 +229,12 @@ export async function syncFolder(c: ImapFlow, a: Account, f: Folder): Promise<nu
       const batch: any[] = []
       const query = { uid: true, envelope: true, flags: true, bodyStructure: true, size: true, internalDate: true, headers: ['references'] }
       for await (const m of c.fetch(fresh.slice(i, i + 200).join(','), query, { uid: true })) batch.push(m)
-      tx(() => batch.forEach(m => insertMessage(a, f, m)))
+      tx(() =>
+        batch.forEach(m => {
+          const id = insertMessage(a, f, m)
+          if (id && watch && +(m.envelope?.date || m.internalDate || 0) >= newerThan) arrived!.push(id)
+        })
+      )
       events.emit('sync', { account: a.email, folder: f.name, done: Math.min(i + 200, fresh.length), total: fresh.length })
       changed()
     }
@@ -237,18 +251,19 @@ const setStatus = (a: Account, status: string) => {
 }
 
 /** Sync folder list, message lists and flags for one account. Bodies are fetched separately. */
-export async function syncAccount(a: Account): Promise<{ account: string; new: number; error?: string }> {
+export async function syncAccount(a: Account): Promise<{ account: string; new: number; error?: string; arrived: number[] }> {
+  const arrived: number[] = []
   try {
     const added = await withImap(a, async c => {
       let n = 0
-      for (const f of await syncFolderList(c, a)) n += await syncFolder(c, a, f)
+      for (const f of await syncFolderList(c, a)) n += await syncFolder(c, a, f, arrived)
       return n
     })
     setStatus(a, 'ok')
-    return { account: a.email, new: added }
+    return { account: a.email, new: added, arrived }
   } catch (e: any) {
     setStatus(a, e instanceof AuthError ? 'auth' : `error: ${e.message}`)
-    return { account: a.email, new: 0, error: e.message }
+    return { account: a.email, new: 0, error: e.message, arrived }
   }
 }
 

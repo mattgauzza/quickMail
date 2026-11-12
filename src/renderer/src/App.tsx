@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Compose, type ComposeState, blankDraft, replyDraft } from './Compose'
 import { AddMailbox } from './AddMailbox'
+import { Settings } from './Settings'
 import { SearchBox } from './Search'
 import { ThreadView } from './ThreadView'
 import { type Account, type FolderRow, type Message, type Thread, Icon, IconButton, Logo, Menu, call, longDate, shortDate, who } from './lib'
@@ -152,6 +153,7 @@ export function App() {
   const [compose, setCompose] = useState<{ key: number; state: ComposeState } | null>(null)
   const [adding, setAdding] = useState(false)
   const [help, setHelp] = useState(false)
+  const [settings, setSettings] = useState(false)
   const [update, setUpdate] = useState('') // version downloaded and waiting for a restart
   useEffect(() => {
     window.qm.invoke('updateState').then(setUpdate, () => {})
@@ -315,7 +317,7 @@ export function App() {
 
   useEffect(() => {
     const onKey = async (e: KeyboardEvent) => {
-      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey || tab !== 'mail' || adding) return
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey || tab !== 'mail' || adding || settings) return
       if (help) return void (['Escape', '?'].includes(e.key) && setHelp(false))
       const first = prefix.current
       prefix.current = ''
@@ -429,6 +431,7 @@ export function App() {
           )}
           <span className="heart"><IconButton icon="heart" label="Support quickMail (opens in your browser)" size={18} onClick={() => window.open(SPONSOR)} /></span>
           <IconButton icon="keyboard" label="Keyboard shortcuts (?)" onClick={() => setHelp(true)} />
+          <IconButton icon="settings" label="Settings and sorting rules" onClick={() => setSettings(true)} />
         </span>
       </header>
 
@@ -582,6 +585,7 @@ export function App() {
         />
       )}
       {help && <Shortcuts onClose={() => setHelp(false)} />}
+      {settings && <Settings accounts={accounts} folders={folders} say={say} onClose={() => setSettings(false)} />}
       {adding && <AddMailbox onClose={added => (setAdding(false), added && (say(`${added} added`), load()))} />}
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>

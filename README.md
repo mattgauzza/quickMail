@@ -156,6 +156,22 @@ Gmail presents "All Mail" and each of your labels as a folder, so one message ca
 - **Attachments**: PDFs, pictures and text open in a viewer inside quickMail. Documents open in the program Windows uses for them. Files that can run code (`.exe`, scripts, shortcuts, `.html`…) are never opened directly.
 - **Calendar invitations**: a message that carries an invitation shows the event (date, title, organizer) above the message with **Yes / Maybe / No** buttons. Your answer is mailed to the organizer as a standard calendar reply. quickMail has no calendar of its own, so the event is not saved anywhere and conflicts are not checked.
 - **Unread count**: shown on the taskbar button; the button flashes when new mail arrives.
+- **Sorting rules**: the gear icon in the top bar opens Settings, where you add rules such as "from stripe.com → move to Money/Receipts". See below.
+
+### Sorting rules
+
+A rule looks at mail as it arrives in an inbox and files it for you. Open Settings (the gear icon), choose **New rule**, and fill in:
+
+- **Mailbox**: every mailbox, or just one.
+- **From / Subject / Sent to contains**: any part of the text, not case sensitive. Several entries separated by commas mean "any of these". When more than one box is filled, all of them must match.
+- **Then**: move to a folder (created if it does not exist; on Gmail this is a label), archive, delete (to Trash), mark as read, or star. Moving and archiving can also mark the mail as read.
+
+How rules behave:
+
+- They run each time quickMail checks for new mail, which is every minute while the app is open, and on `quickmail sync`. quickMail has to be running; nothing happens on the mail server while it is closed, and mail that arrived meanwhile is sorted the next time it starts.
+- Rules are tried from top to bottom and the first one that matches a message wins.
+- Only new mail is touched. To sort what is already in the inbox, use the apply-now (circular arrow) button on a rule, or `quickmail rules run`.
+- Starred mail is never moved or deleted by a rule.
 
 ### Keyboard shortcuts
 
@@ -210,6 +226,14 @@ quickmail attachments 1234
 quickmail download 1234 -o ./out                     # -i 0 for just the first attachment
 quickmail contacts ava                               # search contacts
 quickmail contacts add a@b.com Ava Chen
+
+quickmail rules                                      # sorting rules, in the order they are tried
+quickmail rules add --from "stripe.com, paypal" --move Money/Receipts --read
+quickmail rules add -a you@example.com --subject "newsletter" --archive
+quickmail rules edit 3 --move Receipts               # change only what you pass
+quickmail rules disable 3                            # or enable / remove
+quickmail rules run --dry-run                        # count what the rules would sort in the inbox right now
+quickmail rules run --rule 3                         # apply one rule to mail already in the inbox
 ```
 
 Account setup from the terminal:
@@ -247,6 +271,15 @@ Use the quickmail CLI to clean up my inbox for you@gmail.com.
 4. Then get the ids with `quickmail list -a you@gmail.com --oldest -n 5000 --json` and apply the plan in batches of 200:
    `quickmail move - --to "Folder" --create`, `quickmail archive -`, `quickmail trash -` (ids on standard input).
 5. Finish with `quickmail sync -a you@gmail.com --no-bodies` and `quickmail folders -a you@gmail.com`, and tell me the before and after counts.
+```
+
+**Set up sorting rules from what is already there**
+
+```
+Look at `quickmail senders -n 200 --json` and `quickmail folders`. Suggest sorting rules for the senders that keep filling my inbox
+(receipts, newsletters, notifications), using my existing folders. Show me the list first. For the ones I approve, create them with
+`quickmail rules add --from "<sender>" --move "<folder>"` (add --read for mail I never need to see), check each with
+`quickmail rules run --rule <id> --dry-run`, and then apply them to the mail already in my inbox with `quickmail rules run`.
 ```
 
 **Morning briefing**

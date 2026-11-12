@@ -5,6 +5,7 @@ import { ROLE_ORDER, ensureBody, fetchBodies, parseRaw, syncAccount } from './im
 import { hasCredentials, passwordKey, setSecret } from './secrets'
 import { type Answer, type Invite, buildReply, parseInvite } from './invite'
 import { send } from './send'
+import { applyRules } from './rules'
 
 export { account, accounts, events, HOME } from './db'
 export { closeAll, deleteMessages, moveMessages, reindex, setFlags } from './imap'
@@ -12,6 +13,7 @@ export { send, type Draft } from './send'
 export { importAccounts, importContacts, importPasswords } from './thunderbird'
 export { authUrl, exchangeCode, googleSignIn, hasGoogleClient, isGoogle, setGoogleClient } from './oauth'
 export { listSms } from './sms'
+export { type Rule, type RuleResult, RULE_ACTIONS, applyRules, listRules, removeRule, saveRule } from './rules'
 
 export interface View {
   /** Account id, email (or unique part of it); omit for all accounts. */
@@ -346,8 +348,10 @@ export function sync(ref?: number | string | null, bodies = true) {
   const list = ref != null && ref !== '' && ref !== 'all' ? [account(ref)] : accounts()
   syncing = Promise.all(
     list.map(async a => {
-      const res = await syncAccount(a)
-      if (!res.error && bodies) await fetchBodies(a).catch(e => (res.error = `bodies: ${e.message}`))
+      const { arrived, ...res } = await syncAccount(a)
+      // Sorting rules act on mail that just arrived; a rule that fails must not fail the check for new mail.
+      if (arrived.length) await applyRules({ ids: arrived }).catch(() => {})
+      if (!res.error && bodies) await fetchBodies(a).catch(e => ((res as { error?: string }).error = `bodies: ${e.message}`))
       return res
     })
   ).finally(() => (syncing = null))
