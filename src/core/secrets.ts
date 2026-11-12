@@ -4,7 +4,7 @@ import type { Account } from './db'
 // Secrets live in the OS credential store (Windows Credential Manager), never in the database.
 // Credential Manager caps a blob at ~1280 UTF-16 chars, and OAuth refresh tokens are longer,
 // so long values are split across numbered entries.
-const SERVICE = 'quickMail'
+const SERVICE = 'quickMail' // the app's old name; kept so passwords saved before the rename are still found
 const CHUNK = 1000
 const MARK = '@@chunks:'
 

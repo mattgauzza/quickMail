@@ -120,7 +120,7 @@ function Setup({ accounts, reload, onAdd }: { accounts: Account[]; reload: () =>
   if (!accounts.length)
     return (
       <div className="welcome">
-        <h1>Welcome to quickMail</h1>
+        <h1>Welcome to Qmail</h1>
         <p>Bring your mailboxes and contacts over from Thunderbird to get started.</p>
         <button className="primary" disabled={busy} onClick={() => fromThunderbird(true)}>Import accounts and saved passwords</button>
         <button className="pill" disabled={busy} onClick={() => fromThunderbird(false)}>Import accounts only, I'll type the passwords</button>
@@ -417,7 +417,7 @@ export function App() {
   return (
     <div className="app">
       <header className="top">
-        <div className="brand" title="quickMail"><Logo /> quickMail</div>
+        <div className="brand" title="Qmail"><Logo /> Qmail</div>
         <SearchBox
           value={search} onChange={setSearch} account={view.account} active={!!view.query} inputRef={searchRef}
           onSearch={query => go({ query })} onClear={() => go({})} onOpen={t => (setTab('mail'), setOpen(t))}
@@ -426,10 +426,10 @@ export function App() {
         <span className="top-btn">
           {update && (
             <span className="update-icon">
-              <IconButton icon="download" label={`Update ready: click to restart into quickMail ${update}`} onClick={() => window.qm.invoke('installUpdate')} />
+              <IconButton icon="download" label={`Update ready: click to restart into Qmail ${update}`} onClick={() => window.qm.invoke('installUpdate')} />
             </span>
           )}
-          <span className="heart"><IconButton icon="heart" label="Support quickMail (opens in your browser)" size={18} onClick={() => window.open(SPONSOR)} /></span>
+          <span className="heart"><IconButton icon="heart" label="Support Qmail (opens in your browser)" size={18} onClick={() => window.open(SPONSOR)} /></span>
           <IconButton icon="keyboard" label="Keyboard shortcuts (?)" onClick={() => setHelp(true)} />
           <IconButton icon="settings" label="Settings and sorting rules" onClick={() => setSettings(true)} />
         </span>

@@ -1,12 +1,12 @@
 {
   "name": "quickmail",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "private": true,
   "description": "A fast, Gmail-style local mail client with a CLI for agents",
   "main": "out/main/index.js",
   "bin": {
-    "quickmail": "dist/cli.mjs",
-    "qm": "dist/cli.mjs"
+    "qmail": "dist/cli.mjs",
+    "quickmail": "dist/cli.mjs"
   },
   "scripts": {
     "dev": "electron-vite dev",
@@ -44,13 +44,13 @@
     "vite": "^8.3.8"
   },
   "author": {
-    "name": "quickMail contributors",
+    "name": "Qmail contributors",
     "email": "quickmail@users.noreply.github.com"
   },
   "license": "MIT",
   "build": {
     "appId": "app.quickmail.desktop",
-    "productName": "quickMail",
+    "productName": "Qmail",
     "asar": false,
     "files": [
       "out/**",
@@ -64,14 +64,15 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "resources/icon.png"
+      "icon": "resources/icon.png",
+      "executableName": "quickMail"
     },
     "nsis": {
       "oneClick": true,
       "perMachine": false,
       "include": "build/installer.nsh",
-      "artifactName": "quickMail-Setup-${version}.exe",
-      "shortcutName": "quickMail"
+      "artifactName": "Qmail-Setup-${version}.exe",
+      "shortcutName": "Qmail"
     },
     "publish": [
       {
@@ -87,7 +88,7 @@
       ],
       "category": "public.app-category.productivity",
       "icon": "resources/icon.png",
-      "artifactName": "quickMail-${version}-mac-${arch}.${ext}"
+      "artifactName": "Qmail-${version}-mac-${arch}.${ext}"
     },
     "linux": {
       "target": [
@@ -96,8 +97,8 @@
       ],
       "category": "Office",
       "icon": "resources/icon.png",
-      "maintainer": "quickMail contributors <quickmail@users.noreply.github.com>",
-      "artifactName": "quickMail-${version}-linux-${arch}.${ext}"
+      "maintainer": "Qmail contributors <quickmail@users.noreply.github.com>",
+      "artifactName": "Qmail-${version}-linux-${arch}.${ext}"
     }
   },
   "homepage": "https://github.com/mattgauzza/quickMail"

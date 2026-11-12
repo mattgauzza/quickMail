@@ -22,7 +22,7 @@ async function connect(a: Account): Promise<ImapFlow> {
   }
   const client = new ImapFlow({
     host: a.imap_host, port: a.imap_port, secure: !!a.imap_secure, auth,
-    logger: false, clientInfo: { name: 'quickMail' }
+    logger: false, clientInfo: { name: 'Qmail' }
   })
   client.on('error', () => {})
   try {

@@ -7,6 +7,8 @@ import { autoUpdater } from 'electron-updater'
 let win: BrowserWindow | null = null
 const ICON = path.join(__dirname, '../../resources/icon.png')
 app.setAppUserModelId('app.quickmail.desktop') // own taskbar button and icon, not Electron's
+// The app used to be called quickMail. Its settings folder keeps that name, so the choices people made come along.
+if (!app.commandLine.hasSwitch('user-data-dir')) app.setPath('userData', path.join(app.getPath('appData'), 'quickMail'))
 
 // Version that is downloaded and waiting for a restart. QUICKMAIL_FAKE_UPDATE shows the button when testing the UI.
 let updateReady = process.env.QUICKMAIL_FAKE_UPDATE || ''
@@ -30,10 +32,19 @@ function watchForUpdates() {
   setInterval(check, 30 * 60_000)
 }
 
+/** Removes a launcher this app wrote under a name it no longer uses. A file of that name from anything else is left alone. */
+function dropOldLauncher(file: string) {
+  try {
+    const text = fs.readFileSync(file, 'utf8')
+    if (text.includes('ELECTRON_RUN_AS_NODE') && text.includes('cli.mjs')) fs.unlinkSync(file)
+  } catch { /* not there, or not ours to remove */ }
+}
+
 /**
- * Installed copies make `quickmail` and `qm` work in any terminal: two small launchers in the
- * per-user folder Windows already keeps on PATH. They run the bundled CLI with the app's own
+ * Installed copies make `qmail` work in any terminal (and `quickmail`, the command's earlier name): two small
+ * launchers in the per-user folder Windows already keeps on PATH. They run the bundled CLI with the app's own
  * Node runtime, so nothing else needs installing. Rewritten on start so they follow app updates.
+ * Earlier versions also wrote a `qm` launcher; it is taken away again, but only if it is ours.
  */
 function installCli() {
   if (!app.isPackaged) return
@@ -45,10 +56,11 @@ function installCli() {
       const bin = path.join(os.homedir(), '.local', 'bin')
       const sh = `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec "${process.execPath}" "${path.join(app.getAppPath(), 'dist', 'cli.mjs')}" "$@"\n`
       fs.mkdirSync(bin, { recursive: true })
-      for (const name of ['quickmail', 'qm']) {
+      for (const name of ['qmail', 'quickmail']) {
         const file = path.join(bin, name)
         if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== sh) fs.writeFileSync(file, sh, { mode: 0o755 })
       }
+      dropOldLauncher(path.join(bin, 'qm'))
     } catch { /* no CLI launcher; the app itself is unaffected */ }
     return
   }
@@ -56,12 +68,13 @@ function installCli() {
   const dir = path.join(process.env.LOCALAPPDATA, 'Microsoft', 'WindowsApps')
   const cli = path.join(app.getAppPath(), 'dist', 'cli.mjs')
   const body = `@echo off\r\nsetlocal\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${process.execPath}" "${cli}" %*\r\n`
-  for (const name of ['quickmail.cmd', 'qm.cmd']) {
+  for (const name of ['qmail.cmd', 'quickmail.cmd']) {
     try {
       const file = path.join(dir, name)
       if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== body) fs.writeFileSync(file, body)
     } catch { /* no CLI launcher; the app itself is unaffected */ }
   }
+  dropOldLauncher(path.join(dir, 'qm.cmd'))
 }
 
 const DEMO = !!process.env.QUICKMAIL_DEMO
@@ -78,7 +91,7 @@ class Host {
 
   private start() {
     const proc = utilityProcess.fork(path.join(__dirname, 'host.js'), [], {
-      serviceName: `quickMail ${this.role}`, env: { ...process.env, QUICKMAIL_ROLE: this.role } as Record<string, string>
+      serviceName: `Qmail ${this.role}`, env: { ...process.env, QUICKMAIL_ROLE: this.role } as Record<string, string>
     })
     proc.on('message', (m: { id?: number; result?: unknown; error?: string; event?: string; data?: unknown }) => {
       if (m.event) return this.onEvent(m.event, m.data)
@@ -153,7 +166,7 @@ async function badge() {
   if (n !== badged) {
     const more = badged >= 0 && n > badged
     badged = n
-    win.setTitle(n ? `(${n}) quickMail` : 'quickMail')
+    win.setTitle(n ? `(${n}) Qmail` : 'Qmail')
     if (more && !win.isFocused()) win.flashFrame(true)
     if (process.platform !== 'win32') app.setBadgeCount(n) // dock badge on macOS, launcher badge on Linux
   }
@@ -178,7 +191,7 @@ async function badge() {
 let badging: Promise<void> = Promise.resolve()
 const rebadge = () => (badging = badging.then(badge).catch(() => {}))
 
-// Shown inside quickMail. Everything else goes to the program Windows uses for it, except RISKY types.
+// Shown inside Qmail. Everything else goes to the program Windows uses for it, except RISKY types.
 const PREVIEW = new Set(['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'txt', 'log', 'csv', 'md', 'json'])
 const RISKY = new Set([
   'exe', 'msi', 'msix', 'bat', 'cmd', 'com', 'scr', 'pif', 'cpl', 'dll', 'js', 'jse', 'vbs', 'vbe', 'wsf', 'wsh', 'ps1', 'psm1',
@@ -305,7 +318,7 @@ else {
         const r = await dialog.showMessageBox(owner(e), {
           type: 'warning', buttons: ['Show in folder', 'Cancel'], defaultId: 1, cancelId: 1,
           message: `${path.basename(file)} was not opened`,
-          detail: 'Files of this type can run programs on your computer, so quickMail will not open them directly. Only open it yourself if you trust the sender.'
+          detail: 'Files of this type can run programs on your computer, so Qmail will not open them directly. Only open it yourself if you trust the sender.'
         })
         if (r.response === 0) shell.showItemInFolder(file)
         return

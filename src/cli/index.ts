@@ -6,9 +6,9 @@ import * as api from '../core/api'
 
 const program = new Command()
 program
-  .name('quickmail')
+  .name('qmail')
   .description(
-    'quickMail: read, search and send mail across all your mailboxes.\n' +
+    'Qmail: read, search and send mail across all your mailboxes.\n' +
       'Every command accepts --json for machine-readable output. Message ids come from `list` / `search`.'
   )
   .option('--json', 'print JSON instead of text')
@@ -69,7 +69,7 @@ acct.command('list', { isDefault: true }).description('show accounts and their s
   out(rows, () =>
     rows.length
       ? rows.map(a => `${String(a.id).padStart(2)}  ${cut(a.email, 30)} ${cut(a.signedIn ? a.status : 'needs sign-in', 16)} ${a.imap}`).join('\n')
-      : 'No accounts yet. Run: quickmail accounts import-thunderbird'
+      : 'No accounts yet. Run: qmail accounts import-thunderbird'
   )
 })
 acct
@@ -84,13 +84,13 @@ acct
       [
         `Accounts added: ${added.join(', ') || 'none (already present)'}`,
         `Contacts imported: ${contacts}`,
-        o.passwords ? `Credentials imported: ${creds.join(', ') || 'none'}` : 'Passwords not imported (add --passwords, or run: quickmail accounts login <email>)'
+        o.passwords ? `Credentials imported: ${creds.join(', ') || 'none'}` : 'Passwords not imported (add --passwords, or run: qmail accounts login <email>)'
       ].join('\n')
     )
   })
 acct
   .command('add <email>')
-  .description('add a mailbox by hand, then sign in with: quickmail accounts login <email>')
+  .description('add a mailbox by hand, then sign in with: qmail accounts login <email>')
   .option('--imap <host[:port]>', 'incoming mail server (port 993 unless given)')
   .option('--smtp <host[:port]>', 'outgoing mail server (port 465 unless given; use :587 for STARTTLS)')
   .option('--google', 'Gmail account: sign in with Google (servers are filled in)')
@@ -101,7 +101,7 @@ acct
     const smtp = o.smtp ?? (o.google ? 'smtp.gmail.com' : o.microsoft ? 'smtp.office365.com:587' : '')
     if (!imap || !smtp) throw new Error('Give --imap and --smtp (or use --google / --microsoft)')
     const id = api.addMailbox({ email, name: o.name, imap, smtp, oauth: !!(o.microsoft || o.google) })
-    out({ id, email }, () => `Added ${email}. Next: quickmail accounts login ${email}`)
+    out({ id, email }, () => `Added ${email}. Next: qmail accounts login ${email}`)
   })
 acct
   .command('login <account>')
@@ -125,14 +125,14 @@ acct
     } else api.setPassword(a.id, o.password ?? (await ask(`Password for ${a.email}: `, true)))
     const [res] = await api.sync(a.id, false)
     if (res.error) throw new Error(res.error)
-    out({ account: a.email, signedIn: true }, () => `${a.email} is signed in. Run: quickmail sync`)
+    out({ account: a.email, signedIn: true }, () => `${a.email} is signed in. Run: qmail sync`)
   })
 acct
   .command('google-client <client-id> <client-secret>')
   .description('save your Google "Desktop app" OAuth client (from Google Cloud Console) so Gmail accounts can sign in')
   .action((id, secret) => {
     api.setGoogleClient(id, secret)
-    out({ saved: true }, () => 'Google client saved. Add a Gmail account with: quickmail accounts add <you@gmail.com> --google')
+    out({ saved: true }, () => 'Google client saved. Add a Gmail account with: qmail accounts add <you@gmail.com> --google')
   })
 acct.command('remove <account>').description('remove an account and its local mail (nothing is deleted on the server)').action(ref => {
   const a = api.account(ref)
@@ -227,7 +227,7 @@ const ruleInput = (o: any) => {
 const rules = program.command('rules').description('sorting rules: what to do with mail as it arrives in an inbox')
 rules.command('list', { isDefault: true }).description('show the rules, in the order they are tried').action(() => {
   const rows = api.listRules()
-  out(rows, () => (rows.length ? rows.map(ruleLine).join('\n') : 'No rules yet. Add one: quickmail rules add --from stripe.com --move Receipts'))
+  out(rows, () => (rows.length ? rows.map(ruleLine).join('\n') : 'No rules yet. Add one: qmail rules add --from stripe.com --move Receipts'))
 })
 ruleOpts(rules.command('add').description('add a rule, e.g. --from stripe.com --move Money/Receipts --read')).action(o => {
   const input = ruleInput(o)
