@@ -8,7 +8,7 @@ const program = new Command()
 program
   .name('qmail')
   .description(
-    'quickMail: read, search and send mail across all your mailboxes.\n' +
+    'Qmail: read, search and send mail across all your mailboxes.\n' +
       'Every command accepts --json for machine-readable output. Message ids come from `list` / `search`.'
   )
   .option('--json', 'print JSON instead of text')

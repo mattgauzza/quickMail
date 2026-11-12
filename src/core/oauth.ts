@@ -32,7 +32,7 @@ export function authUrl(email: string) {
   return { url, verifier }
 }
 
-// Google sign-in. Google has no shared public client for mail apps, so quickMail uses the user's own
+// Google sign-in. Google has no shared public client for mail apps, so Qmail uses the user's own
 // "Desktop app" OAuth client (Google Cloud Console), saved once with: qmail accounts google-client
 export const GOOGLE = {
   authorize: 'https://accounts.google.com/o/oauth2/v2/auth',
@@ -78,7 +78,7 @@ export async function googleSignIn(a: Pick<Account, 'email'>, open: (url: string
         if (!q.get('code') && !q.get('error')) return void res.writeHead(404).end()
         const good = !!q.get('code') && q.get('state') === state
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
-        res.end(`<body style="font:16px system-ui;margin:15vh auto;max-width:420px;text-align:center"><h2>quickMail</h2><p>${
+        res.end(`<body style="font:16px system-ui;margin:15vh auto;max-width:420px;text-align:center"><h2>Qmail</h2><p>${
           good ? 'You are signed in. You can close this tab.' : 'Sign-in did not complete. Close this tab and try again.'
         }</p></body>`)
         clearTimeout(timer)

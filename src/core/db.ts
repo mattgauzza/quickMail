@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import { EventEmitter } from 'node:events'
 import type { DatabaseSync, StatementSync } from 'node:sqlite'
 
-/** All quickMail data lives here: the SQLite store and the raw .eml files. */
+/** All Qmail data lives here: the SQLite store and the raw .eml files. */
 export const HOME = process.env.QUICKMAIL_HOME || path.join(os.homedir(), '.quickmail')
 export const DB_PATH = path.join(HOME, 'mail.db')
 export const rawPath = (accountId: number, id: number) =>
@@ -153,7 +153,7 @@ export function open(): DatabaseSync {
   if (process.env.QUICKMAIL_ROLE !== 'ui' && !db.prepare("SELECT 1 FROM sqlite_master WHERE name='messages_list'").get())
     try {
       db.exec('CREATE INDEX IF NOT EXISTS messages_list ON messages(folder_id, account_id, thread_id, date, seen, flagged, has_attachments, message_id)')
-    } catch { /* another quickMail process is building it */ }
+    } catch { /* another Qmail process is building it */ }
   return db
 }
 

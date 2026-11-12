@@ -15,7 +15,7 @@ export function Popout({ id }: { id: number }) {
     Promise.all([call('getThread', id, true), call('listAccounts')]).then(
       ([ms, a]) => {
         const m = ms.find(x => x.id === id) ?? ms[ms.length - 1]
-        document.title = m.subject || 'quickMail'
+        document.title = m.subject || 'Qmail'
         setThread({ id, role: m.role, folder: m.folder, ids: ms.filter(x => x.role === m.role).map(x => x.id) })
         setAccounts(a)
       },

@@ -121,7 +121,7 @@ function Setup({ accounts, reload, onAdd }: { accounts: Account[]; reload: () =>
   if (!accounts.length)
     return (
       <div className="welcome">
-        <h1>Welcome to quickMail</h1>
+        <h1>Welcome to Qmail</h1>
         <p>Bring your mailboxes and contacts over from Thunderbird to get started.</p>
         <button className="primary" disabled={busy} onClick={() => fromThunderbird(true)}>Import accounts and saved passwords</button>
         <button className="pill" disabled={busy} onClick={() => fromThunderbird(false)}>Import accounts only, I'll type the passwords</button>
@@ -167,6 +167,7 @@ export function App() {
   const [search, setSearch] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
   const paneRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
   const latest = useRef<Message | null>(null)
   const seq = useRef(0)
 
@@ -194,21 +195,22 @@ export function App() {
 
   const load = useCallback(async () => {
     const mine = ++seq.current
+    const current = () => mine === seq.current
     const q = scope()
     const main = sectioned ? { ...q, state: 'read' as const } : q
     const unread = { ...q, state: 'unread' as const }
+    // Each part is shown as soon as it arrives: the list first, the counts and folders after, so a
+    // slow count never holds up the rows.
+    const rowsP = call('listThreads', main, PAGE, page * PAGE).then(t => current() && setRows(t))
+    const unreadP = sectioned
+      ? call('listThreads', unread, PAGE, 0).then(ut => current() && setUnreadRows(ut))
+      : (setUnreadRows([]), Promise.resolve())
+    const totalsP = Promise.all([call('countThreads', main), sectioned ? call('countThreads', unread) : Promise.resolve(0)])
+      .then(([n, un]) => current() && setTotals({ unread: un, rest: n }))
+    const metaP = Promise.all([call('listAccounts'), call('listFolders', null)])
+      .then(([a, f]) => current() && (setAccounts(a), setFolders(f)))
     try {
-      const [a, f, t, n, ut, un] = await Promise.all([
-        call('listAccounts'), call('listFolders', null), call('listThreads', main, PAGE, page * PAGE), call('countThreads', main),
-        sectioned ? call('listThreads', unread, PAGE, 0) : Promise.resolve([] as Thread[]),
-        sectioned ? call('countThreads', unread) : Promise.resolve(0)
-      ])
-      if (mine !== seq.current) return
-      setAccounts(a)
-      setFolders(f)
-      setRows(t)
-      setUnreadRows(ut)
-      setTotals({ unread: un, rest: n })
+      await Promise.all([rowsP, unreadP, totalsP, metaP])
     } catch (e) {
       say(clean(e))
     }
@@ -237,6 +239,7 @@ export function App() {
   }, [])
 
   const go = (patch: Partial<ViewState>) => {
+    listRef.current?.scrollTo({ top: 0 }) // a different mailbox, folder or search starts at the top
     setView(v => ({ ...v, query: '', ...patch }))
     if (patch.query === undefined) setSearch('')
     setPage(0)
@@ -418,7 +421,7 @@ export function App() {
   return (
     <div className="app">
       <header className="top">
-        <div className="brand" title="quickMail"><Logo /> quickMail</div>
+        <div className="brand" title="Qmail"><Logo /> Qmail</div>
         <SearchBox
           value={search} onChange={setSearch} account={view.account} active={!!view.query} inputRef={searchRef}
           onSearch={query => go({ query })} onClear={() => go({})} onOpen={t => (setTab('mail'), setOpen(t))}
@@ -427,10 +430,10 @@ export function App() {
         <span className="top-btn">
           {update && (
             <span className="update-icon">
-              <IconButton icon="download" label={`Update ready: click to restart into quickMail ${update}`} onClick={() => window.qm.invoke('installUpdate')} />
+              <IconButton icon="download" label={`Update ready: click to restart into Qmail ${update}`} onClick={() => window.qm.invoke('installUpdate')} />
             </span>
           )}
-          <span className="heart"><IconButton icon="heart" label="Support quickMail (opens in your browser)" size={18} onClick={() => window.open(SPONSOR)} /></span>
+          <span className="heart"><IconButton icon="heart" label="Support Qmail (opens in your browser)" size={18} onClick={() => window.open(SPONSOR)} /></span>
           <IconButton icon="keyboard" label="Keyboard shortcuts (?)" onClick={() => setHelp(true)} />
           <IconButton icon="settings" label="Settings and sorting rules" onClick={() => setSettings(true)} />
         </span>
@@ -513,7 +516,7 @@ export function App() {
                 />
               </span>
             </div>
-            <div className="list">
+            <div className="list" ref={listRef}>
               {totals.unread + totals.rest === 0 && <p className="empty">{view.query ? 'No mail matches your search.' : 'Nothing here.'}</p>}
               {headed && (
                 <div className="section" title={folded.unread ? 'Show unread' : 'Hide unread'} onClick={() => setFolded(f => ({ ...f, unread: !f.unread }))}>

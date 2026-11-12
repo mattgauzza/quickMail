@@ -109,7 +109,7 @@ export function buildReply(inv: Invite, me: { name: string; email: string }, ans
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')
   const cn = me.name ? `;CN="${me.name.replace(/"/g, '')}"` : ''
   return [
-    'BEGIN:VCALENDAR', 'PRODID:-//quickMail//EN', 'VERSION:2.0', 'METHOD:REPLY', 'BEGIN:VEVENT',
+    'BEGIN:VCALENDAR', 'PRODID:-//Qmail//EN', 'VERSION:2.0', 'METHOD:REPLY', 'BEGIN:VEVENT',
     ...['UID', 'SEQUENCE', 'RECURRENCE-ID', 'DTSTART', 'DTEND', 'SUMMARY', 'ORGANIZER'].map(k => inv.raw[k]).filter(Boolean),
     `DTSTAMP:${stamp}`,
     `ATTENDEE;PARTSTAT=${answer}${cn}:mailto:${me.email}`,

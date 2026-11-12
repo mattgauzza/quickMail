@@ -1,4 +1,4 @@
-// Try quickMail with made-up mail: builds if needed, seeds ./demo-store, and starts the app in demo mode.
+// Try Qmail with made-up mail: builds if needed, seeds ./demo-store, and starts the app in demo mode.
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'

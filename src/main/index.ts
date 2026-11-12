@@ -91,7 +91,7 @@ class Host {
 
   private start() {
     const proc = utilityProcess.fork(path.join(__dirname, 'host.js'), [], {
-      serviceName: `quickMail ${this.role}`, env: { ...process.env, QUICKMAIL_ROLE: this.role } as Record<string, string>
+      serviceName: `Qmail ${this.role}`, env: { ...process.env, QUICKMAIL_ROLE: this.role } as Record<string, string>
     })
     proc.on('message', (m: { id?: number; result?: unknown; error?: string; event?: string; data?: unknown }) => {
       if (m.event) return this.onEvent(m.event, m.data)
@@ -166,7 +166,7 @@ async function badge() {
   if (n !== badged) {
     const more = badged >= 0 && n > badged
     badged = n
-    win.setTitle(n ? `(${n}) quickMail` : 'quickMail')
+    win.setTitle(n ? `(${n}) Qmail` : 'Qmail')
     if (more && !win.isFocused()) win.flashFrame(true)
     if (process.platform !== 'win32') app.setBadgeCount(n) // dock badge on macOS, launcher badge on Linux
   }
@@ -191,7 +191,7 @@ async function badge() {
 let badging: Promise<void> = Promise.resolve()
 const rebadge = () => (badging = badging.then(badge).catch(() => {}))
 
-// Shown inside quickMail. Everything else goes to the program Windows uses for it, except RISKY types.
+// Shown inside Qmail. Everything else goes to the program Windows uses for it, except RISKY types.
 const PREVIEW = new Set(['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'txt', 'log', 'csv', 'md', 'json'])
 const RISKY = new Set([
   'exe', 'msi', 'msix', 'bat', 'cmd', 'com', 'scr', 'pif', 'cpl', 'dll', 'js', 'jse', 'vbs', 'vbe', 'wsf', 'wsh', 'ps1', 'psm1',
@@ -318,7 +318,7 @@ else {
         const r = await dialog.showMessageBox(owner(e), {
           type: 'warning', buttons: ['Show in folder', 'Cancel'], defaultId: 1, cancelId: 1,
           message: `${path.basename(file)} was not opened`,
-          detail: 'Files of this type can run programs on your computer, so quickMail will not open them directly. Only open it yourself if you trust the sender.'
+          detail: 'Files of this type can run programs on your computer, so Qmail will not open them directly. Only open it yourself if you trust the sender.'
         })
         if (r.response === 0) shell.showItemInFolder(file)
         return
