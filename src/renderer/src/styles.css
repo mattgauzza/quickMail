@@ -265,7 +265,16 @@ iframe.body { display: block; width: 100%; height: 60px; border: 0; background: 
 .dialog .error { margin: 0; }
 .tf select { height: 44px; padding: 0 10px; border: 1px solid var(--muted); border-radius: 4px; outline: 0; background: var(--surface); font: inherit; font-size: 14px; color: var(--text); }
 .tf select:focus { border-color: var(--accent); }
-.dialog.settings { width: min(680px, calc(100vw - 48px)); }
+.dialog.settings { width: min(680px, calc(100vw - 48px)); overflow: hidden; }
+.settings-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.settings-head h2 { margin: 0; }
+.settings-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding-right: 6px; }
+.settings-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.settings-tabs button { height: 40px; padding: 0 16px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font: inherit; font-weight: 500; cursor: pointer; }
+.settings-tabs button:hover { color: var(--text); }
+.settings-tabs button.on { color: var(--accent); border-bottom-color: var(--accent); }
+.settings-search { height: 36px; padding: 0 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--search); color: var(--text); font: inherit; outline: 0; }
+.settings-search:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .dialog h3 { margin: 4px 0 0; font-size: 15px; font-weight: 500; }
 .rules { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
 .rules li { display: flex; align-items: center; gap: 4px; padding: 6px 0; border-top: 1px solid var(--line); }

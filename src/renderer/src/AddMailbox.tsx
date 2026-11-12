@@ -35,10 +35,10 @@ export function AddMailbox({ onClose }: { onClose: (added?: string) => void }) {
       id = await call('addMailbox', { email: f.email, name: f.name, imap: f.imap, smtp: f.smtp, oauth })
       if (oauth) await window.qm.invoke('signIn', id)
       else await call('setPassword', id, f.password)
-      await window.qm.invoke('refresh', id)
-      const status = (await call('listAccounts')).find(a => a.id === id)?.status ?? ''
-      if (status !== 'ok') throw new Error(status === 'auth' ? 'The server refused the sign-in. Check the address and password.' : status.replace(/^error:?\s*/, '') || 'Could not connect')
+      // Credentials are saved. The first sync can take minutes for a big mailbox, so it runs in the background;
+      // a mailbox that cannot connect shows "!" in the sidebar and asks for sign-in again.
       onClose(f.email)
+      window.qm.invoke('refresh', id).catch(() => {})
     } catch (err) {
       if (id !== null) await call('removeAccount', id).catch(() => {})
       setError(clean(err))
