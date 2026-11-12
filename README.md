@@ -131,6 +131,7 @@ Google requires every mail app to identify itself, and does not offer a shared i
      - **Application home page**: `https://github.com/mattgauzza/quickMail`
      - **Application privacy policy link**: `https://github.com/mattgauzza/quickMail/blob/main/PRIVACY.md`
      - **Application terms of service link**: `https://github.com/mattgauzza/quickMail/blob/main/TERMS.md`
+     - **Authorized domains** (same page, below): add `github.com`. Google requires every domain used by the links above to be listed here.
 5. Under **Audience**, click **Publish app**. (If you leave it in "Testing", Google signs you out every 7 days.)
 6. Open **Clients** (<https://console.cloud.google.com/auth/clients>) → **Create client** → application type **Desktop app** → **Create**. Copy the **Client ID** and **Client secret**.
 7. Open a terminal and save them in quickMail:
