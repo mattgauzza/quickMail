@@ -14,13 +14,13 @@ const remember = (key: string, value: string) => {
 }
 
 const NAV: [key: string, label: string, icon: string][] = [
-  ['inbox', 'Inbox', 'inbox'], ['starred', 'Starred', 'starOff'], ['sent', 'Sent', 'sent'], ['drafts', 'Drafts', 'drafts'],
+  ['inbox', 'Inbox', 'inbox'], ['unread', 'Unread', 'unread'], ['starred', 'Starred', 'starOff'], ['sent', 'Sent', 'sent'], ['drafts', 'Drafts', 'drafts'],
   ['archive', 'Archive', 'archive'], ['junk', 'Spam', 'junk'], ['trash', 'Trash', 'trash']
 ]
 const PAGE = 50
 // Hover text for the sidebar folders.
 const NAV_TIP: Record<string, string> = {
-  inbox: 'Inbox (g then i)', starred: 'Starred conversations (g then s)', sent: 'Mail you sent (g then t)', drafts: 'Unfinished messages (g then d)',
+  inbox: 'Inbox (g then i)', unread: 'Unread mail in every folder except Trash and Spam', starred: 'Starred conversations (g then s)', sent: 'Mail you sent (g then t)', drafts: 'Unfinished messages (g then d)',
   archive: 'Mail moved out of the inbox', junk: 'Mail marked as spam', trash: 'Deleted mail'
 }
 const SPONSOR = 'https://github.com/sponsors/mattgauzza'
@@ -148,6 +148,9 @@ export function App() {
   const [view, setView] = useState<ViewState>({ account: null, folder: 'inbox', query: '' })
   const [page, setPage] = useState(0)
   const [rows, setRows] = useState<Thread[]>([])
+  // True while the list for the current mailbox/folder/search is still loading; shows placeholder rows.
+  const [loading, setLoading] = useState(true)
+  const shownKey = useRef('')
   const [open, setOpen] = useState<Thread | null>(null)
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [cursor, setCursor] = useState(0)
@@ -173,17 +176,34 @@ export function App() {
 
   const [unreadRows, setUnreadRows] = useState<Thread[]>([])
   const [totals, setTotals] = useState({ unread: 0, rest: 0 })
+  const [unreadAll, setUnreadAll] = useState(0)
+  // Unread conversations per mailbox (every folder except Trash and Spam, as the Unread item counts them).
+  const [unreadPer, setUnreadPer] = useState<Record<number, number>>({})
+  // The unread conversation that is open, with where its row sits, so it stays put while it is read.
+  const [held, setHeld] = useState<{ t: Thread; index: number } | null>(null)
   const [layout, setLayout] = useState(() => pref('layout', 'list'))
   const [splitW, setSplitW] = useState(() => Number(pref('split', '460')))
   const [folded, setFolded] = useState({ unread: pref('fold.unread', '') === '1', rest: pref('fold.rest', '') === '1' })
 
   const split = layout === 'split'
-  // The inbox is shown as Gmail does: unread conversations first, then everything else.
-  const sectioned = !view.query && view.folder === 'inbox'
-  const headed = sectioned && totals.unread > 0
-  const top = headed && !folded.unread ? unreadRows : []
-  const rest = headed && folded.rest ? [] : rows
+  // Folder lists are shown as Gmail does: unread conversations first, then everything else.
+  // Starred and Unread are already filtered lists, so they stay flat; a folder with no unread shows no header.
+  const sectioned = !view.query && view.folder !== 'starred' && view.folder !== 'unread'
+  // Opening an unread conversation marks it read at once, which would move its row out of the Unread
+  // section mid-click. Its row stays where it was until another conversation is opened or closed.
+  const heldKey = held ? keyOf(held.t) : null
+  const withHeld = (list: Thread[]) => (!held || list.some(t => keyOf(t) === heldKey) ? list : [...list.slice(0, held.index), held.t, ...list.slice(held.index)])
+  const topBase = sectioned ? withHeld(unreadRows) : []
+  const restBase = sectioned ? rows.filter(t => keyOf(t) !== heldKey) : withHeld(rows)
+  const unreadShown = totals.unread + (topBase.length - unreadRows.length)
+  const headed = sectioned && unreadShown > 0
+  const top = headed && !folded.unread ? topBase : []
+  const rest = headed && folded.rest ? [] : restBase
   const threads = [...top, ...rest]
+  useEffect(() => {
+    if (!open || !open.unread) return setHeld(null)
+    setHeld(h => (h && keyOf(h.t) === keyOf(open) ? h : { t: open, index: Math.max(0, threads.findIndex(t => keyOf(t) === keyOf(open))) }))
+  }, [open])
   const say = (msg: string) => {
     setToast(msg)
     setTimeout(() => setToast(t => (t === msg ? '' : t)), 4000)
@@ -191,7 +211,9 @@ export function App() {
   const scope = () =>
     view.query
       ? { account: view.account, query: view.query }
-      : view.folder === 'starred' ? { account: view.account, starred: true } : { account: view.account, folder: view.folder }
+      : view.folder === 'starred' ? { account: view.account, starred: true }
+      : view.folder === 'unread' ? { account: view.account, state: 'unread' as const }
+      : { account: view.account, folder: view.folder }
 
   const load = useCallback(async () => {
     const mine = ++seq.current
@@ -199,9 +221,20 @@ export function App() {
     const q = scope()
     const main = sectioned ? { ...q, state: 'read' as const } : q
     const unread = { ...q, state: 'unread' as const }
+    // Switching mailbox, folder, search or page clears the old rows at once, so the previous account's
+    // mail never sits under the new account's name while the new list loads. A background refresh keeps them.
+    const key = `${view.account}|${view.folder}|${view.query}|${page}`
+    if (shownKey.current !== key) {
+      shownKey.current = key
+      setRows([])
+      setUnreadRows([])
+      setTotals({ unread: 0, rest: 0 })
+      setUnreadAll(0) // the sidebar count belongs to the account on screen; don't show the last account's number
+      setLoading(true)
+    }
     // Each part is shown as soon as it arrives: the list first, the counts and folders after, so a
     // slow count never holds up the rows.
-    const rowsP = call('listThreads', main, PAGE, page * PAGE).then(t => current() && setRows(t))
+    const rowsP = call('listThreads', main, PAGE, page * PAGE).then(t => current() && (setRows(t), setLoading(false)))
     const unreadP = sectioned
       ? call('listThreads', unread, PAGE, 0).then(ut => current() && setUnreadRows(ut))
       : (setUnreadRows([]), Promise.resolve())
@@ -209,10 +242,18 @@ export function App() {
       .then(([n, un]) => current() && setTotals({ unread: un, rest: n }))
     const metaP = Promise.all([call('listAccounts'), call('listFolders', null)])
       .then(([a, f]) => current() && (setAccounts(a), setFolders(f)))
+    // Unread across every folder except Trash and Spam, counted as conversations (not per folder, so All Mail isn't counted twice).
+    const allUnreadP = call('countThreads', { account: view.account, state: 'unread' as const }).then(n => current() && setUnreadAll(n))
+    // The mailbox badges: one count per account, so the sidebar totals match the Unread item.
+    const perP = call('listAccounts')
+      .then(list => Promise.all(list.map(a => call('countThreads', { account: a.id, state: 'unread' as const }).then(n => [a.id, n] as const))))
+      .then(pairs => current() && setUnreadPer(Object.fromEntries(pairs)))
     try {
-      await Promise.all([rowsP, unreadP, totalsP, metaP])
+      await Promise.all([rowsP, unreadP, totalsP, metaP, allUnreadP, perP])
     } catch (e) {
       say(clean(e))
+    } finally {
+      if (current()) setLoading(false)
     }
   }, [view, page])
 
@@ -254,10 +295,17 @@ export function App() {
     const ids = ts.flatMap(t => t.ids)
     const gone = kind !== 'read' && kind !== 'unread'
     if (gone) {
+      // Any reload already in flight was fetched before this change, so its rows would bring the
+      // removed conversations back. Retire it; the reload below replaces it.
+      seq.current++
       const keys = new Set(ts.map(keyOf))
       setRows(r => r.filter(t => !keys.has(keyOf(t))))
       setUnreadRows(r => r.filter(t => !keys.has(keyOf(t))))
-      if (open && keys.has(keyOf(open))) setOpen(null)
+      if (open && keys.has(keyOf(open))) {
+        // Like Gmail: the reader moves on to the conversation below the removed one, if there is one.
+        const below = threads.slice(threads.findIndex(t => keyOf(t) === keyOf(open)) + 1).find(t => !keys.has(keyOf(t)))
+        setOpen(below ?? null)
+      }
     } else if (kind === 'unread') setOpen(null)
     setChecked(new Set())
     const n = ts.length === 1 ? 'Conversation' : `${ts.length} conversations`
@@ -268,6 +316,7 @@ export function App() {
         say(`${n} ${kind === 'archive' ? 'archived' : kind === 'junk' ? 'marked as spam' : 'moved to Inbox'}`)
         await call('moveMessages', ids, kind)
       }
+      if (gone) load()
     } catch (e) {
       say(clean(e))
       load()
@@ -389,7 +438,8 @@ export function App() {
     })
 
   if (!accounts) return null
-  const unreadIn = (id: number | null) => folders.filter(f => f.role === 'inbox' && (id === null || f.accountId === id)).reduce((n, f) => n + f.unread, 0)
+  // Conversations in different mailboxes are never the same conversation, so "All mailboxes" is just the sum.
+  const unreadIn = (id: number | null) => (id === null ? Object.values(unreadPer).reduce((n, c) => n + c, 0) : unreadPer[id] ?? 0)
   const inScope = (f: FolderRow) => view.account === null || f.accountId === view.account
   const count = (role: string) => folders.filter(f => f.role === role && inScope(f)).reduce((n, f) => n + (role === 'drafts' ? f.total : f.unread), 0)
   const custom = [...new Map(folders.filter(f => !f.role && f.total > 0 && inScope(f)).map(f => [f.name.toLowerCase(), f])).values()]
@@ -445,6 +495,7 @@ export function App() {
           {NAV.map(([key, label, icon]) => (
             <button key={key} title={NAV_TIP[key]} className={tab === 'mail' && !view.query && view.folder === key ? 'on' : ''} onClick={() => go({ folder: key })}>
               <Icon name={icon} /> <span>{label}</span>
+              {key === 'unread' && unreadAll > 0 && <em title={`${unreadAll.toLocaleString()} unread conversations`}>{unreadAll.toLocaleString()}</em>}
               {['inbox', 'drafts', 'junk'].includes(key) && count(key) > 0 && <em title={`${count(key).toLocaleString()} ${key === 'drafts' ? 'drafts' : 'unread'}`}>{count(key)}</em>}
             </button>
           ))}
@@ -462,7 +513,7 @@ export function App() {
             {unreadIn(null) > 0 && <em title={`${unreadIn(null).toLocaleString()} unread in all inboxes`}>{unreadIn(null)}</em>}
           </button>
           {accounts.map(a => (
-            <button key={a.id} className={view.account === a.id ? 'on soft' : ''} title={a.status.startsWith('error') ? a.status : !a.signedIn || a.status !== 'ok' ? `${a.email} needs you to sign in` : `Show only ${a.email}`} onClick={() => go({ account: a.id, folder: view.folder })}>
+            <button key={a.id} className={view.account === a.id ? 'on soft' : ''} title={a.status.startsWith('error') ? a.status : !a.signedIn || a.status !== 'ok' ? `${a.email} needs you to sign in` : `Show only ${a.email}`} onClick={() => go({ account: a.id, folder: 'inbox' })}>
               <span className="dot" style={{ background: a.color }} /> <span>{a.email}</span>
               {!a.signedIn || a.status !== 'ok' ? <em className="warn" title="Needs attention: sign in again">!</em> : unreadIn(a.id) > 0 && <em title={`${unreadIn(a.id).toLocaleString()} unread`}>{unreadIn(a.id)}</em>}
             </button>
@@ -507,7 +558,7 @@ export function App() {
                 </>
               )}
               <span className="pager" title={rows.length > 0 ? `Showing conversations ${page * PAGE + 1} to ${page * PAGE + rows.length} of ${totals.rest.toLocaleString()}` : undefined}>
-                {rows.length > 0 && `${page * PAGE + 1}–${page * PAGE + rows.length} of ${totals.rest.toLocaleString()}`}
+                {rows.length > 0 && totals.rest > 0 && `${page * PAGE + 1}–${page * PAGE + rows.length} of ${totals.rest.toLocaleString()}`}
                 <IconButton icon="prev" label="Newer conversations" onClick={() => page > 0 && setPage(page - 1)} />
                 <IconButton icon="next" label="Older conversations" onClick={() => (page + 1) * PAGE < totals.rest && setPage(page + 1)} />
                 <IconButton
@@ -517,12 +568,21 @@ export function App() {
               </span>
             </div>
             <div className="list" ref={listRef}>
-              {totals.unread + totals.rest === 0 && <p className="empty">{view.query ? 'No mail matches your search.' : 'Nothing here.'}</p>}
+              {loading && threads.length === 0 && Array.from({ length: 9 }, (_, i) => (
+                <div className="row skeleton" key={`sk${i}`} aria-hidden="true">
+                  <span className="lead"><span className="bar box" /></span>
+                  <span className="from"><span className="bar" style={{ width: `${90 + (i % 3) * 30}px` }} /></span>
+                  <span className="text"><span className="bar" style={{ width: `${45 + ((i * 37) % 40)}%` }} /></span>
+                  <span className="bar date" />
+                </div>
+              ))}
+              {/* Only say "Nothing here" once the list and its counts have both come back empty. */}
+              {!loading && threads.length === 0 && rows.length === 0 && unreadRows.length === 0 && totals.unread + totals.rest === 0 && <p className="empty">{view.query ? 'No mail matches your search.' : 'Nothing here.'}</p>}
               {headed && (
                 <div className="section" title={folded.unread ? 'Show unread' : 'Hide unread'} onClick={() => setFolded(f => ({ ...f, unread: !f.unread }))}>
                   {groupBox(top, folded.unread, 'unread')}
                   <Icon name={folded.unread ? 'down' : 'up'} /> <b>Unread</b>
-                  <span title={`${totals.unread.toLocaleString()} unread conversations`}>{unreadRows.length < totals.unread ? `1–${unreadRows.length} of ${totals.unread.toLocaleString()}` : totals.unread}</span>
+                  <span title={`${unreadShown.toLocaleString()} unread conversations`}>{top.length < unreadShown ? `1–${top.length} of ${unreadShown.toLocaleString()}` : unreadShown}</span>
                 </div>
               )}
               {threads.map((t, i) => (

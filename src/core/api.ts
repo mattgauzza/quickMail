@@ -105,7 +105,7 @@ export function listThreads(v: View = {}, limit = 50, offset = 0) {
   // Two steps, so a big mailbox stays quick: pick the page of conversations from the narrow list index,
   // then read the details of just those.
   const top = all<{ ids: string }>(
-    `SELECT GROUP_CONCAT(m.id) AS ids, MAX(m.date) AS date FROM messages m
+    `SELECT GROUP_CONCAT(m.id) AS ids, MAX(m.date) AS date FROM messages m INDEXED BY messages_list
      WHERE ${sql} GROUP BY m.account_id, m.thread_id ${having(v)} ORDER BY date DESC LIMIT ? OFFSET ?`,
     ...params, limit, offset
   )
@@ -149,7 +149,7 @@ export function listThreads(v: View = {}, limit = 50, offset = 0) {
 export function countThreads(v: View = {}) {
   const { sql, params } = where(v)
   return get<{ n: number }>(
-    `SELECT COUNT(*) AS n FROM (SELECT 1 FROM messages m WHERE ${sql} GROUP BY m.account_id, m.thread_id ${having(v)})`, ...params
+    `SELECT COUNT(*) AS n FROM (SELECT 1 FROM messages m INDEXED BY messages_list WHERE ${sql} GROUP BY m.account_id, m.thread_id ${having(v)})`, ...params
   )!.n
 }
 

@@ -462,7 +462,22 @@ async function inFolder(c: ImapFlow, folderPath: string, fn: () => Promise<unkno
   }
 }
 
+/**
+ * The ids plus every other copy of the same messages. Gmail lists one message under Inbox, All Mail and
+ * each label, and the app shows those copies as one; a flag set on only one copy would leave the others
+ * unread (or unstarred), so the conversation would stay in Unread after it was read.
+ */
+function withCopies(ids: number[]): number[] {
+  if (!ids.length) return ids
+  const copies = all<{ id: number }>(
+    `SELECT c.id FROM messages m JOIN messages c ON c.account_id=m.account_id AND c.message_id=m.message_id AND c.id<>m.id
+     WHERE m.id IN (${placeholders(ids.length)}) AND m.message_id<>''`, ...ids
+  )
+  return [...new Set([...ids, ...copies.map(c => c.id)])]
+}
+
 export async function setFlags(ids: number[], f: { seen?: boolean; flagged?: boolean; answered?: boolean }) {
+  ids = withCopies(ids)
   const groups = locate(ids)
   const cols: [string, string, boolean | undefined][] = [
     ['seen', '\\Seen', f.seen], ['flagged', '\\Flagged', f.flagged], ['answered', '\\Answered', f.answered]

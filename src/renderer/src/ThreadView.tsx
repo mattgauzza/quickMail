@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { type ComposeState, replyDraft } from './Compose'
 import { type Message, type Meta, type Thread, Icon, IconButton, avatarColor, call, esc, fileSize, longDate, shortDate, who } from './lib'
+import { findCodes } from './Codes'
 
 const ROLE_LABEL: Record<string, string> = { inbox: 'Inbox', sent: 'Sent', drafts: 'Drafts', archive: 'Archive', junk: 'Spam', trash: 'Trash' }
 
@@ -18,25 +19,115 @@ blockquote{margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex}a{color
 <body>${html || `<pre>${esc(text)}</pre>`}</body></html>`,
     [html, text]
   )
+  // The address of the link under the pointer, shown in the corner as a browser does, so a fake link can be spotted.
+  const [hover, setHover] = useState('')
   const fit = () => {
     const f = ref.current
     const d = f?.contentDocument
     if (f && d?.body) f.style.height = `${Math.max(d.body.scrollHeight, d.documentElement.scrollHeight)}px`
   }
   return (
-    <iframe
-      ref={ref} className="body" title="Message" srcDoc={doc}
-      sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-      onLoad={() => {
-        fit()
-        const d = ref.current?.contentDocument
-        if (d?.body) new ResizeObserver(fit).observe(d.body)
-        d?.addEventListener('keydown', e => {
-          if (e.ctrlKey || e.metaKey || e.altKey) return // leave copy, select-all and friends alone
-          window.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, shiftKey: e.shiftKey }))
-        })
-      }}
-    />
+    <>
+      <iframe
+        ref={ref} className="body" title="Message" srcDoc={doc}
+        sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+        onMouseLeave={() => setHover('')}
+        onLoad={() => {
+          const d = ref.current?.contentDocument
+          if (d?.body) linkify(d)
+          fit()
+          if (d?.body) new ResizeObserver(fit).observe(d.body)
+          d?.addEventListener('keydown', e => {
+            if (e.ctrlKey || e.metaKey || e.altKey) return // leave copy, select-all and friends alone
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, shiftKey: e.shiftKey }))
+          })
+          d?.addEventListener('mouseover', e => {
+            const a = (e.target as Element | null)?.closest?.('a[href]')
+            setHover(a?.getAttribute('href')?.trim() ?? '')
+          })
+        }}
+      />
+      {hover && <LinkPeek href={hover} />}
+    </>
+  )
+}
+
+const URL_IN_TEXT = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi
+
+/** The address without punctuation that ends the sentence around it (a closing bracket is kept when it has an opening one). */
+function trimUrl(url: string) {
+  for (;;) {
+    const before = url
+    url = url.replace(/[.,;:!?'"*]+$/, '')
+    if (url.endsWith(')') && (url.match(/\(/g)?.length ?? 0) < (url.match(/\)/g)?.length ?? 0)) url = url.slice(0, -1)
+    if (url.endsWith(']') && !url.includes('[')) url = url.slice(0, -1)
+    if (url === before) return url
+  }
+}
+
+/** Turns web addresses written as plain text into links (built as elements, never as HTML). */
+function linkify(d: Document) {
+  const walker = d.createTreeWalker(d.body, NodeFilter.SHOW_TEXT)
+  const hits: Text[] = []
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (n.parentElement?.closest('a, script, style, textarea, title')) continue
+    if (/\b(?:https?:\/\/|www\.)/i.test(n.textContent ?? '')) hits.push(n as Text)
+  }
+  for (const node of hits) {
+    const text = node.textContent ?? ''
+    const frag = d.createDocumentFragment()
+    let last = 0
+    for (const m of text.matchAll(URL_IN_TEXT)) {
+      const url = trimUrl(m[0])
+      const at = m.index ?? 0
+      if (url.length < 8) continue
+      frag.append(text.slice(last, at))
+      const a = d.createElement('a')
+      a.href = /^www\./i.test(url) ? `https://${url}` : url
+      a.textContent = url
+      frag.append(a)
+      last = at + url.length
+    }
+    frag.append(text.slice(last))
+    node.replaceWith(frag)
+  }
+}
+
+/** A link's real address in the bottom-left corner, with its site in bold. */
+function LinkPeek({ href }: { href: string }) {
+  let url: URL | null = null
+  try { url = new URL(href) } catch { /* not a full address; shown as written */ }
+  const style: React.CSSProperties = {
+    position: 'fixed', left: 8, bottom: 8, zIndex: 1000, maxWidth: '70vw', padding: '4px 10px', borderRadius: 6,
+    font: '12px/1.5 "Segoe UI", Roboto, Arial, sans-serif', color: '#e8eaed', background: '#202124',
+    border: '1px solid rgba(255,255,255,.18)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none'
+  }
+  if (!url || !/^https?:$/.test(url.protocol)) return <div style={style}>{href}</div>
+  const rest = url.href.slice(url.origin.length)
+  return <div style={style}>{url.protocol}//<b>{url.host}</b>{rest}</div>
+}
+
+/** Copy buttons for a one-time code or sign-in link found in the message. */
+function CopyBar({ html, text }: { html: string; text: string }) {
+  const found = useMemo(() => findCodes(html, text), [html, text])
+  const [copied, setCopied] = useState('')
+  const copy = (value: string) => {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(value)
+      setTimeout(() => setCopied(c => (c === value ? '' : c)), 2000)
+    }, () => { /* clipboard refused; nothing to show */ })
+  }
+  if (!found.codes.length && !found.links.length) return null
+  const row = { display: 'flex', gap: 8, flexWrap: 'wrap' as const, margin: '0 0 8px' }
+  return (
+    <div style={row}>
+      {found.codes.map(c => (
+        <button key={c} className="tonal" title="Copy this code" onClick={() => copy(c)}>{copied === c ? 'Copied' : `Copy code ${c}`}</button>
+      ))}
+      {found.links.map(l => (
+        <button key={l.href} className="tonal" title={l.href} onClick={() => copy(l.href)}>{copied === l.href ? 'Copied' : `Copy ${l.label.toLowerCase()} link`}</button>
+      ))}
+    </div>
   )
 }
 
@@ -127,6 +218,7 @@ function Card(p: { meta: Meta; open: boolean; toggle: () => void; onCompose: (c:
           {error ? <p className="error">Could not load this message: {error}</p> : !msg ? <p className="muted">Loading…</p> : (
             <>
               {msg.invite && <InviteCard id={msg.id} invite={msg.invite} />}
+              <CopyBar html={msg.html} text={msg.text} />
               <div className="paper"><Body html={msg.html} text={msg.text} /></div>
               {msg.attachments.length > 0 && (
                 <div className="chips">
