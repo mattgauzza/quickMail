@@ -117,6 +117,7 @@ body.dragging iframe { pointer-events: none; }
 .list { flex: 1; overflow-y: auto; }
 .empty { margin: 64px 0; text-align: center; color: var(--muted); }
 .section { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 12px; height: 46px; padding: 0 18px 0 6px; border-bottom: 1px solid var(--line); background: var(--surface); font-size: 15px; cursor: pointer; color: var(--muted); }
+.section ~ .section { margin-top: 18px; border-top: 1px solid var(--line); } /* breathing room between Unread and Everything else */
 .section b { font-weight: 500; color: var(--text); }
 .section span { margin-left: auto; font-size: 12px; }
 .section input { margin-right: 1px; }
