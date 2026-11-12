@@ -68,7 +68,7 @@ Passwords are kept in the desktop keyring (GNOME Keyring, KWallet or another Sec
 
 ### Updates
 
-On Windows and the Linux AppImage, updates are automatic. quickMail checks this project's GitHub releases when it starts and every few hours, downloads a new version in the background, and shows a green **Update ready** button in the top bar. Click it to restart into the new version, or just close the app and it updates then. (Version 0.1.0 predates this; install 0.2.0 or later once by hand.)
+On Windows and the Linux AppImage, updates are automatic. quickMail checks this project's GitHub releases when it starts and every half hour, downloads a new version in the background, and shows a small green download icon in the top bar. Click it to restart into the new version, or just close the app and it updates then. (Version 0.1.0 predates this; install 0.2.0 or later once by hand.)
 
 To remove quickMail, use **Settings → Apps → Installed apps**. Your mail store is left in place; delete the `.quickmail` folder in your user folder to remove that too.
 

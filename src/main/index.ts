@@ -13,7 +13,7 @@ let updateReady = process.env.QUICKMAIL_FAKE_UPDATE || ''
 
 /**
  * Installed copies keep themselves current from the project's GitHub releases: check at start and
- * every few hours, download in the background, then offer a restart (the button in the top bar).
+ * every half hour, download in the background, then offer a restart (the button in the top bar).
  * An update left waiting is installed the next time the app is closed.
  */
 function watchForUpdates() {
@@ -27,7 +27,7 @@ function watchForUpdates() {
   autoUpdater.on('error', () => {}) // offline, or GitHub unreachable: try again at the next check
   const check = () => autoUpdater.checkForUpdates().catch(() => {})
   check()
-  setInterval(check, 3 * 60 * 60_000)
+  setInterval(check, 30 * 60_000)
 }
 
 /**

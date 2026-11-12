@@ -481,7 +481,14 @@ export async function moveMessages(ids: number[], dest: string, create = false) 
       if (!target) throw new Error(`${a.email} has no folder "${dest}"`)
       if (target.id === g[0].folder_id) throw new Error(`Already in ${target.name}`)
       const destPath = target.path
-      await inFolder(c, g[0].path, () => c.messageMove(uidsOf(g), destPath, { uid: true }))
+      await inFolder(c, g[0].path, async () => {
+        const res: any = await c.messageMove(uidsOf(g), destPath, { uid: true })
+        // Servers that report what they moved (Gmail does) sometimes move only part of a large batch.
+        // Saying so makes onServer resync the folder, which puts the unmoved messages back in the list.
+        const moved = res?.uidMap?.size
+        if (typeof moved === 'number' && moved < g.length)
+          throw new Error(`${a.email}: the server moved only ${moved} of ${g.length} messages to ${target!.name}; the rest are still in place`)
+      })
       await syncFolder(c, a, target)
     })
   }
