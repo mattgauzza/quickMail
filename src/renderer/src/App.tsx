@@ -586,7 +586,12 @@ export function App() {
         />
       )}
       {help && <Shortcuts onClose={() => setHelp(false)} />}
-      {settings && <Settings accounts={accounts} folders={folders} say={say} onClose={() => setSettings(false)} />}
+      {settings && (
+        <Settings
+          accounts={accounts} folders={folders} say={say} onClose={() => setSettings(false)}
+          onRemoved={id => (view.account === id && go({ account: null, folder: view.folder }), load())}
+        />
+      )}
       {adding && <AddMailbox onClose={added => (setAdding(false), added && (say(`${added} added`), load()))} />}
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>

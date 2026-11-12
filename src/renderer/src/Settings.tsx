@@ -19,13 +19,14 @@ function describe(r: Rule, accounts: Account[]) {
   return { when: when[0].toUpperCase() + when.slice(1) + where, what: what + (r.alsoRead && r.action !== 'read' && r.action !== 'trash' ? ', mark read' : '') }
 }
 
-/** Settings: for now, the sorting rules. */
-export function Settings(p: { accounts: Account[]; folders: FolderRow[]; onClose: () => void; say: (msg: string) => void }) {
+/** Settings: mailboxes and the sorting rules. */
+export function Settings(p: { accounts: Account[]; folders: FolderRow[]; onClose: () => void; say: (msg: string) => void; onRemoved: (id: number) => void }) {
   const [rules, setRules] = useState<Rule[]>([])
   const [edit, setEdit] = useState<Draft | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [version, setVersion] = useState('')
+  const [removing, setRemoving] = useState<number | null>(null)
   const reload = () => listRules().then(setRules, e => setError(clean(e)))
   useEffect(() => {
     reload()
@@ -63,6 +64,33 @@ export function Settings(p: { accounts: Account[]; folders: FolderRow[]; onClose
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !busy && p.onClose()}>
       <div className="dialog settings">
         <h2>Settings</h2>
+        <h3>Mailboxes</h3>
+        <p className="help">
+          Removing a mailbox deletes its copy of the mail from this PC. Nothing is deleted on the mail server, and you can add the mailbox again later.
+        </p>
+        {p.accounts.length === 0 && <p className="muted">No mailboxes yet.</p>}
+        <ul className="rules">
+          {p.accounts.map(a => (
+            <li key={a.id}>
+              <span className="dot" style={{ background: a.color }} /> <span>{a.email}</span>
+              {removing === a.id ? (
+                <span className="remove-confirm">
+                  Remove {a.email} from this PC?{' '}
+                  <button className="primary small" disabled={busy} onClick={() => guard(async () => {
+                    await call('removeAccount', a.id)
+                    setRemoving(null)
+                    p.onRemoved(a.id)
+                    p.say(`${a.email} removed`)
+                  })}>Remove</button>{' '}
+                  <button className="text-btn" disabled={busy} onClick={() => setRemoving(null)}>Cancel</button>
+                </span>
+              ) : (
+                <button className="text-btn" title={`Remove ${a.email} from this PC`} disabled={busy} onClick={() => setRemoving(a.id)}>Remove</button>
+              )}
+            </li>
+          ))}
+        </ul>
+        {error && <p className="error">{error}</p>}
         <h3>Sorting rules</h3>
         <p className="help">
           Rules sort mail as it arrives in an inbox, each time quickMail checks for new mail. The first rule that matches a message wins.
