@@ -158,6 +158,7 @@ export function App() {
   const [toast, setToast] = useState('')
   const [search, setSearch] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
+  const paneRef = useRef<HTMLDivElement>(null)
   const latest = useRef<Message | null>(null)
   const seq = useRef(0)
 
@@ -285,8 +286,19 @@ export function App() {
     e.preventDefault()
     const from = e.clientX
     const w0 = splitW
-    const move = (ev: MouseEvent) => setSplitW(Math.max(320, Math.min(w0 + ev.clientX - from, window.innerWidth - 248 - 380)))
+    // While dragging, only the pane's own width changes (once per frame); the app redraws once, on release.
+    let w = w0
+    let frame = 0
+    const move = (ev: MouseEvent) => {
+      w = Math.max(320, Math.min(w0 + ev.clientX - from, window.innerWidth - 248 - 380))
+      frame ||= requestAnimationFrame(() => {
+        frame = 0
+        if (paneRef.current) paneRef.current.style.flex = `0 0 ${w}px`
+      })
+    }
     const up = () => {
+      cancelAnimationFrame(frame)
+      setSplitW(w)
       document.body.classList.remove('dragging')
       window.removeEventListener('mousemove', move)
       window.removeEventListener('mouseup', up)
@@ -451,7 +463,7 @@ export function App() {
         {tab === 'mail' && accounts.length > 0 && (
           <div className="work">
           {(split || !open) && (
-          <div className={`pane${split ? ' narrow' : ''}`} style={split ? { flex: `0 0 ${splitW}px` } : undefined}>
+          <div ref={paneRef} className={`pane${split ? ' narrow' : ''}`} style={split ? { flex: `0 0 ${splitW}px` } : undefined}>
             <div className="toolbar">
               <input
                 type="checkbox" aria-label="Select all" checked={threads.length > 0 && picked.length === threads.length}

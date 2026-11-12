@@ -98,6 +98,15 @@ const ONE = `CASE WHEN m.message_id = '' THEN 'id:' || m.id ELSE m.message_id EN
 /** Conversations matching a view, newest first. `id` is the newest message; `ids` are all messages of the conversation in this view. */
 export function listThreads(v: View = {}, limit = 50, offset = 0) {
   const { sql, params } = where(v)
+  // Two steps, so a big mailbox stays quick: pick the page of conversations from the narrow list index,
+  // then read the details of just those.
+  const top = all<{ ids: string }>(
+    `SELECT GROUP_CONCAT(m.id) AS ids, MAX(m.date) AS date FROM messages m
+     WHERE ${sql} GROUP BY m.account_id, m.thread_id ${having(v)} ORDER BY date DESC LIMIT ? OFFSET ?`,
+    ...params, limit, offset
+  )
+  if (!top.length) return []
+  const picked = top.flatMap(t => t.ids.split(',').map(Number))
   const rows = all<any>(
     // "newest" doubles as the pick of which copy represents the conversation: SQLite fills the plain columns from
     // the row holding the MAX, and the +1 makes a copy in a real folder win over its duplicate in Gmail's All Mail.
@@ -105,8 +114,8 @@ export function listThreads(v: View = {}, limit = 50, offset = 0) {
             SUM(m.flagged) AS starred, SUM(m.has_attachments) AS attachments, GROUP_CONCAT(m.id) AS ids,
             m.subject, m.snippet, m.from_name, m.from_addr, m.to_json, f.name AS folder, f.role
      FROM messages m JOIN folders f ON f.id=m.folder_id
-     WHERE ${sql} GROUP BY m.account_id, m.thread_id ${having(v)} ORDER BY date DESC LIMIT ? OFFSET ?`,
-    ...params, limit, offset
+     WHERE m.id IN (${placeholders(picked.length)}) GROUP BY m.account_id, m.thread_id ORDER BY date DESC`,
+    ...picked
   )
   const emails = emailOf()
   return rows.map(r => {
@@ -243,16 +252,22 @@ export async function saveAttachment(id: number, index: number, dest: string) {
 
 export function listFolders(ref?: number | string | null) {
   const emails = emailOf()
-  const rows = all<Folder & { unread: number; total: number }>(
-    `SELECT f.*, (SELECT COUNT(*) FROM messages WHERE folder_id=f.id AND seen=0) AS unread,
-            (SELECT COUNT(*) FROM messages WHERE folder_id=f.id) AS total FROM folders f`
+  const counts = new Map(
+    all<{ folder_id: number; total: number; unread: number }>(
+      'SELECT folder_id, COUNT(*) AS total, SUM(1-seen) AS unread FROM messages GROUP BY folder_id'
+    ).map(c => [c.folder_id, c])
   )
+  const rows = all<Folder>('SELECT * FROM folders').map(f => ({ ...f, unread: counts.get(f.id)?.unread ?? 0, total: counts.get(f.id)?.total ?? 0 }))
   const only = ref != null && ref !== '' && ref !== 'all' ? account(ref).id : null
   return rows
     .filter(f => only === null || f.account_id === only)
     .sort((x, y) => x.account_id - y.account_id || ROLE_ORDER.indexOf(x.role) - ROLE_ORDER.indexOf(y.role) || x.name.localeCompare(y.name))
     .map(f => ({ id: f.id, account: emails.get(f.account_id)!, accountId: f.account_id, name: f.name, path: f.path, role: f.role, unread: f.unread, total: f.total }))
 }
+
+/** Unread messages across every inbox (the taskbar badge). */
+export const unreadInbox = () =>
+  get<{ n: number }>("SELECT COUNT(*) AS n FROM messages WHERE seen=0 AND folder_id IN (SELECT id FROM folders WHERE role='inbox')")!.n
 
 export function listAccounts() {
   return accounts().map(a => ({

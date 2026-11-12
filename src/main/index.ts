@@ -1,9 +1,8 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { BrowserWindow, app, dialog, ipcMain, nativeImage, nativeTheme, session, shell } from 'electron'
+import { BrowserWindow, type UtilityProcess, app, dialog, ipcMain, nativeImage, nativeTheme, session, shell, utilityProcess } from 'electron'
 import { autoUpdater } from 'electron-updater'
-import * as api from '../core/api'
 
 let win: BrowserWindow | null = null
 const ICON = path.join(__dirname, '../../resources/icon.png')
@@ -65,14 +64,76 @@ function installCli() {
   }
 }
 
+const DEMO = !!process.env.QUICKMAIL_DEMO
+
+/**
+ * The mail core runs in helper processes (see host.ts), never here: this process draws the window frame and
+ * passes every click along, so anything slow in it (a big query, parsing mail) makes the whole app stutter.
+ */
+class Host {
+  private proc: UtilityProcess | null = null
+  private next = 1
+  private waiting = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>()
+  constructor(private role: 'ui' | 'bg', private onEvent: (event: string, data: any) => void) {}
+
+  private start() {
+    const proc = utilityProcess.fork(path.join(__dirname, 'host.js'), [], {
+      serviceName: `quickMail ${this.role}`, env: { ...process.env, QUICKMAIL_ROLE: this.role } as Record<string, string>
+    })
+    proc.on('message', (m: { id?: number; result?: unknown; error?: string; event?: string; data?: unknown }) => {
+      if (m.event) return this.onEvent(m.event, m.data)
+      const w = this.waiting.get(m.id!)
+      if (!w) return
+      this.waiting.delete(m.id!)
+      if (m.error !== undefined) w.reject(new Error(m.error))
+      else w.resolve(m.result)
+    })
+    proc.on('exit', () => {
+      if (this.proc === proc) this.proc = null // started again by the next call
+      for (const w of this.waiting.values()) w.reject(new Error('The mail service stopped; please try again'))
+      this.waiting.clear()
+    })
+    return (this.proc = proc)
+  }
+
+  call<T = any>(method: string, ...args: unknown[]): Promise<T> {
+    const proc = this.proc ?? this.start()
+    const id = this.next++
+    return new Promise<T>((resolve, reject) => {
+      this.waiting.set(id, { resolve, reject })
+      proc.postMessage({ id, method, args })
+    })
+  }
+
+  async stop() {
+    if (!this.proc) return
+    await Promise.race([this.call('closeAll').catch(() => {}), new Promise(r => setTimeout(r, 3000))])
+    this.proc?.kill()
+  }
+}
+
+let quiet: NodeJS.Timeout | undefined
+let held: NodeJS.Timeout | undefined
+const announce = () => (broadcast('changed'), rebadge())
+const onEvent = (role: 'ui' | 'bg') => (event: string, data: any) => {
+  if (event === 'sync') return void win?.webContents.send('sync', data)
+  if (event === 'open') return external(String(data))
+  if (event !== 'changed') return
+  if (role === 'ui') {
+    // Something the user did: show it right away.
+    clearTimeout(quiet)
+    quiet = setTimeout(announce, 120)
+  } else held ??= setTimeout(() => ((held = undefined), announce()), 2500) // background progress: a few redraws a minute are plenty
+}
+const ui = new Host('ui', onEvent('ui'))
+const bg = new Host('bg', onEvent('bg'))
+
 // Everything the window is allowed to call in the mail core.
-const METHODS = {
-  listAccounts: api.listAccounts, listFolders: api.listFolders, listThreads: api.listThreads, getThread: api.getThread,
-  getMessage: api.getMessage, setFlags: api.setFlags, moveMessages: api.moveMessages, deleteMessages: api.deleteMessages,
-  send: api.send, searchContacts: api.searchContacts, importAccounts: api.importAccounts, importContacts: api.importContacts,
-  importPasswords: api.importPasswords, setPassword: api.setPassword, removeAccount: api.removeAccount,
-  countThreads: api.countThreads, addMailbox: api.addMailbox, respondInvite: api.respondInvite, listMessages: api.listMessages
-} as const
+const METHODS = new Set([
+  'listAccounts', 'listFolders', 'listThreads', 'getThread', 'getMessage', 'setFlags', 'moveMessages', 'deleteMessages',
+  'send', 'searchContacts', 'importAccounts', 'importContacts', 'importPasswords', 'setPassword', 'removeAccount',
+  'countThreads', 'addMailbox', 'respondInvite', 'listMessages'
+])
 
 const broadcast = (channel: string, ...args: unknown[]) => BrowserWindow.getAllWindows().forEach(w => w.webContents.send(channel, ...args))
 const owner = (e: Electron.IpcMainInvokeEvent) => BrowserWindow.fromWebContents(e.sender) ?? win!
@@ -82,7 +143,8 @@ let badged = -1
 /** Unread inbox count on the taskbar button (and in the window title); the button flashes when new mail lands while you're elsewhere. */
 async function badge() {
   if (!win) return
-  const n = api.listFolders().filter(f => f.role === 'inbox').reduce((sum, f) => sum + f.unread, 0)
+  const n = await ui.call<number>('unreadInbox')
+  if (!win) return
   if (n === badged) return
   const more = badged >= 0 && n > badged
   badged = n
@@ -149,11 +211,7 @@ const external = (url: string) => {
 }
 
 /** Check for new mail everywhere, then quietly download bodies. */
-async function refresh(ref?: number | string | null) {
-  if (api.DEMO) return
-  await api.sync(ref ?? null, false)
-  api.backfill()
-}
+const refresh = (ref?: number | string | null) => (DEMO ? Promise.resolve() : bg.call('refresh', ref ?? null))
 
 function createWindow() {
   win = new BrowserWindow({
@@ -212,9 +270,9 @@ else {
 
   app.whenReady().then(() => {
 
-    ipcMain.handle('api', (_e, method: keyof typeof METHODS, args: any[]) => {
-      if (!Object.hasOwn(METHODS, method)) throw new Error(`Unknown method ${method}`)
-      return (METHODS[method] as (...a: any[]) => unknown)(...args)
+    ipcMain.handle('api', (_e, method: string, args: any[]) => {
+      if (!METHODS.has(method)) throw new Error(`Unknown method ${method}`)
+      return ui.call(method, ...args)
     })
     ipcMain.handle('refresh', (_e, ref?: number) => refresh(ref))
 
@@ -227,7 +285,7 @@ else {
     ipcMain.handle('fileInfo', (_e, p: string) => ({ path: p, name: path.basename(p), size: fs.statSync(p).size }))
     ipcMain.handle('openAttachment', async (e, id: number, index: number) => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'quickmail-'))
-      const file = await api.saveAttachment(id, index, dir)
+      const file = await ui.call<string>('saveAttachment', id, index, dir)
       const ext = path.extname(file).slice(1).toLowerCase()
       if (PREVIEW.has(ext)) return preview(file)
       if (RISKY.has(ext)) {
@@ -244,13 +302,13 @@ else {
     })
     ipcMain.handle('saveAttachment', async (e, id: number, index: number, filename: string) => {
       const r = await dialog.showSaveDialog(owner(e), { defaultPath: path.join(app.getPath('downloads'), filename) })
-      return r.filePath ? api.saveAttachment(id, index, r.filePath) : null
+      return r.filePath ? ui.call('saveAttachment', id, index, r.filePath) : null
     })
 
     ipcMain.handle('signIn', async (_e, id: number) => {
-      const a = api.account(id)
-      if (api.isGoogle(a)) return void (await api.googleSignIn(a, url => shell.openExternal(url)))
-      const { url, verifier } = api.authUrl(a.email)
+      const kind = await ui.call<{ google: boolean; url: string; verifier: string }>('signInKind', id)
+      if (kind.google) return void (await ui.call('googleSignIn', id))
+      const { url, verifier } = kind
       const code = await new Promise<string>((resolve, reject) => {
         const w = new BrowserWindow({ width: 520, height: 720, parent: win!, modal: true, webPreferences: { partition: 'persist:signin' } })
         w.setMenu(null)
@@ -267,15 +325,9 @@ else {
         w.on('closed', () => reject(new Error('Sign-in window was closed')))
         w.loadURL(url)
       })
-      await api.exchangeCode(a, code, verifier)
+      await ui.call('exchangeCode', id, code, verifier)
     })
 
-    let timer: NodeJS.Timeout | undefined
-    api.events.on('changed', () => {
-      clearTimeout(timer)
-      timer = setTimeout(() => (broadcast('changed'), rebadge()), 120)
-    })
-    api.events.on('sync', p => win?.webContents.send('sync', p))
     nativeTheme.on('updated', () => BrowserWindow.getAllWindows().forEach(w => { try { w.setTitleBarOverlay(overlay()) } catch { /* not on macOS */ } }))
 
     ipcMain.handle('updateState', () => updateReady)
@@ -288,7 +340,7 @@ else {
   })
 
   app.on('window-all-closed', async () => {
-    await api.closeAll().catch(() => {})
+    await Promise.all([ui.stop(), bg.stop()])
     app.quit()
   })
 }

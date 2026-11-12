@@ -7,9 +7,10 @@ const CSP =
   "font-src 'self' data: https:; object-src 'none'; base-uri 'none'"
 
 // Entry points use electron-vite defaults:
-// src/main/index.ts, src/preload/index.ts, src/renderer/index.html
+// src/main/index.ts (plus host.ts), src/preload/index.ts, src/renderer/index.html
 export default defineConfig({
-  main: {},
+  // host.ts is the mail core's helper process (see src/main/index.ts).
+  main: { build: { rollupOptions: { input: { index: 'src/main/index.ts', host: 'src/main/host.ts' } } } },
   preload: {},
   renderer: {
     plugins: [

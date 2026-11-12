@@ -133,8 +133,14 @@ export function open(): DatabaseSync {
   if (db) return db
   fs.mkdirSync(HOME, { recursive: true })
   db = new (sqlite().DatabaseSync)(DB_PATH)
-  db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=8000; PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL;')
+  db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=15000; PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL;')
   db.exec(SCHEMA)
+  // Everything the mail list and the folder counts need, without touching the wide message rows (which carry the bodies).
+  // Built once on an existing store; the window's own process leaves that to the background one rather than wait on it.
+  if (process.env.QUICKMAIL_ROLE !== 'ui' && !db.prepare("SELECT 1 FROM sqlite_master WHERE name='messages_list'").get())
+    try {
+      db.exec('CREATE INDEX IF NOT EXISTS messages_list ON messages(folder_id, account_id, thread_id, date, seen, flagged, has_attachments, message_id)')
+    } catch { /* another quickMail process is building it */ }
   return db
 }
 
