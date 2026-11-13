@@ -1,6 +1,6 @@
 {
   "name": "quickmail",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "private": true,
   "description": "A fast, Gmail-style local mail client with a CLI for agents",
   "main": "out/main/index.js",

@@ -619,6 +619,18 @@ export async function setFlags(ids: number[], f: { seen?: boolean; flagged?: boo
  */
 export async function moveMessages(ids: number[], dest: string, create = false) {
   const groups = locate(ids)
+  // Moving a Gmail message to Trash removes all of its labels on the server, including All Mail.
+  // Capture those local copies before dropping the selected rows, but leave them alone for other
+  // moves and other providers, where folders can contain independent copies.
+  const trashCopies = new Map<number, number[]>()
+  if (dest.toLowerCase() === 'trash') for (const g of groups.values()) {
+    if (!isGmail(g[0].account_id)) continue
+    const copies = withCopies(g.map(x => x.id))
+    trashCopies.set(g[0].folder_id, all<{ id: number }>(
+      `SELECT m.id FROM messages m JOIN folders f ON f.id=m.folder_id
+       WHERE m.id IN (${placeholders(copies.length)}) AND f.role <> 'trash'`, ...copies
+    ).map(x => x.id))
+  }
   dropMessages(ids)
   changed()
   for (const g of groups.values()) {
@@ -647,6 +659,12 @@ export async function moveMessages(ids: number[], dest: string, create = false) 
         if (typeof moved === 'number' && moved < g.length)
           throw new Error(`${a.email}: the server moved only ${moved} of ${g.length} messages to ${target!.name}; the rest are still in place`)
       })
+      // Only remove the other copies once the server confirms the move.
+      const copies = trashCopies.get(g[0].folder_id) ?? []
+      if (copies.length) {
+        dropMessages(copies)
+        changed()
+      }
       await syncFolder(c, a, target)
     })
   }
