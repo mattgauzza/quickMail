@@ -346,7 +346,8 @@ export function ThreadView(p: {
         <IconButton icon="unread" label="Mark as unread (Shift+u)" onClick={() => p.onAct('unread')} />
         {p.onPopout && <span className="pager"><IconButton icon="popout" label="Open in new window (w)" onClick={p.onPopout} /></span>}
       </div>
-      <div className="thread">
+      {/* keyed by conversation, so each one opened fades in */}
+      <div className="thread" key={metas[0]?.id}>
         <h1>
           {last.subject || '(no subject)'} <span className="tag" title="The folder this conversation is in">{ROLE_LABEL[p.thread.role] ?? p.thread.folder}</span>
         </h1>

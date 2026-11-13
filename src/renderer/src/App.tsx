@@ -4,6 +4,7 @@ import { AddMailbox } from './AddMailbox'
 import { Settings } from './Settings'
 import { SearchBox } from './Search'
 import { ThreadView } from './ThreadView'
+import { useListMotion } from './motion'
 import { type Account, type FolderRow, type Message, type Thread, Icon, IconButton, Logo, Menu, call, longDate, shortDate, who } from './lib'
 
 const pref = (key: string, fallback: string) => {
@@ -18,6 +19,7 @@ const NAV: [key: string, label: string, icon: string][] = [
   ['archive', 'Archive', 'archive'], ['junk', 'Spam', 'junk'], ['trash', 'Trash', 'trash']
 ]
 const PAGE = 50
+const LINGER = 1500 // ms a read conversation stays in the Unread section after you move on
 // Hover text for the sidebar folders.
 const NAV_TIP: Record<string, string> = {
   inbox: 'Inbox (g then i)', unread: 'Unread mail in every folder except Trash and Spam', starred: 'Starred conversations (g then s)', sent: 'Mail you sent (g then t)', drafts: 'Unfinished messages (g then d)',
@@ -216,6 +218,8 @@ export function App() {
   const [tab, setTab] = useState<'mail' | 'messages'>('mail')
   const [status, setStatus] = useState('')
   const [toast, setToast] = useState('')
+  const lastToast = useRef('')
+  if (toast) lastToast.current = toast
   const [search, setSearch] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
   const paneRef = useRef<HTMLDivElement>(null)
@@ -228,8 +232,10 @@ export function App() {
   const [unreadAll, setUnreadAll] = useState(0)
   // Unread conversations per mailbox (every folder except Trash and Spam, as the Unread item counts them).
   const [unreadPer, setUnreadPer] = useState<Record<number, number>>({})
-  // The unread conversation that is open, with where its row sits, so it stays put while it is read.
-  const [held, setHeld] = useState<{ t: Thread; index: number } | null>(null)
+  // Unread conversations opened here. The open one stays where its row was while it is read; once
+  // another is opened it sits there a moment longer (LINGER), then fades out of the Unread section.
+  const [kept, setKept] = useState<Thread[]>([])
+  const linger = useRef(new Map<string, number>())
   const [layout, setLayout] = useState(() => pref('layout', 'list'))
   const [splitW, setSplitW] = useState(() => Number(pref('split', '460')))
   const [folded, setFolded] = useState({ unread: pref('fold.unread', '') === '1', rest: pref('fold.rest', '') === '1' })
@@ -239,20 +245,48 @@ export function App() {
   // Starred and Unread are already filtered lists, so they stay flat; a folder with no unread shows no header.
   const sectioned = !view.query && view.folder !== 'starred' && view.folder !== 'unread'
   // Opening an unread conversation marks it read at once, which would move its row out of the Unread
-  // section mid-click. Its row stays where it was until another conversation is opened or closed.
-  const heldKey = held ? keyOf(held.t) : null
-  const withHeld = (list: Thread[]) => (!held || list.some(t => keyOf(t) === heldKey) ? list : [...list.slice(0, held.index), held.t, ...list.slice(held.index)])
-  const topBase = sectioned ? withHeld(unreadRows) : []
-  const restBase = sectioned ? rows.filter(t => keyOf(t) !== heldKey) : withHeld(rows)
+  // section mid-click. Kept rows go back in date order (the order the list is sorted in), shown as read.
+  const keptKeys = new Set(kept.map(keyOf))
+  const withKept = (list: Thread[]) => {
+    const out = [...list]
+    for (const t of kept) {
+      if (out.some(x => keyOf(x) === keyOf(t))) continue
+      const at = out.findIndex(x => x.date < t.date)
+      out.splice(at < 0 ? out.length : at, 0, { ...t, unread: 0 })
+    }
+    return out
+  }
+  const topBase = sectioned ? withKept(unreadRows) : []
+  const restBase = sectioned ? rows.filter(t => !keptKeys.has(keyOf(t))) : withKept(rows)
   const unreadShown = totals.unread + (topBase.length - unreadRows.length)
   const headed = sectioned && unreadShown > 0
   const top = headed && !folded.unread ? topBase : []
   const rest = headed && folded.rest ? [] : restBase
   const threads = [...top, ...rest]
+  // Rows are keyed by section too, so a conversation that goes from Unread to Everything else fades out
+  // of one and into the other.
+  const shown = useListMotion(
+    [...top.map((t, i) => ({ key: `u:${keyOf(t)}`, value: { t, i } })), ...rest.map((t, i) => ({ key: `r:${keyOf(t)}`, value: { t, i: top.length + i } }))],
+    `${view.account}|${view.folder}|${view.query}|${page}|${folded.unread}|${folded.rest}|${layout}`,
+    listRef
+  )
+  const firstRest = shown.findIndex(s => s.key.startsWith('r:'))
   useEffect(() => {
-    if (!open || !open.unread) return setHeld(null)
-    setHeld(h => (h && keyOf(h.t) === keyOf(open) ? h : { t: open, index: Math.max(0, threads.findIndex(t => keyOf(t) === keyOf(open))) }))
+    const k = open ? keyOf(open) : null
+    if (k && linger.current.has(k)) (clearTimeout(linger.current.get(k)), linger.current.delete(k))
+    for (const t of kept) {
+      const tk = keyOf(t)
+      if (tk === k || linger.current.has(tk)) continue
+      linger.current.set(tk, window.setTimeout(() => (linger.current.delete(tk), setKept(l => l.filter(x => keyOf(x) !== tk))), LINGER))
+    }
+    if (open && k && open.unread && !keptKeys.has(k)) setKept(l => [...l, open])
   }, [open])
+  /** Lets kept rows go now: all of them, or just `keys`. */
+  const forget = (keys?: Set<string>) => {
+    for (const [k, id] of linger.current) if (!keys || keys.has(k)) (clearTimeout(id), linger.current.delete(k))
+    setKept(l => (keys ? l.filter(t => !keys.has(keyOf(t))) : l.length ? [] : l))
+  }
+  useEffect(() => forget(), [view, page])
   const say = (msg: string) => {
     setToast(msg)
     setTimeout(() => setToast(t => (t === msg ? '' : t)), 4000)
@@ -348,6 +382,7 @@ export function App() {
       // removed conversations back. Retire it; the reload below replaces it.
       seq.current++
       const keys = new Set(ts.map(keyOf))
+      forget(keys)
       setRows(r => r.filter(t => !keys.has(keyOf(t))))
       setUnreadRows(r => r.filter(t => !keys.has(keyOf(t))))
       if (open && keys.has(keyOf(open))) {
@@ -634,12 +669,15 @@ export function App() {
                   <span title={`${unreadShown.toLocaleString()} unread conversations`}>{top.length < unreadShown ? `1–${top.length} of ${unreadShown.toLocaleString()}` : unreadShown}</span>
                 </div>
               )}
-              {threads.map((t, i) => (
-                <Fragment key={keyOf(t)}>
-                {headed && i === top.length && section}
+              {shown.map(({ key, value: { t, i: at }, leaving }, n) => {
+                const i = leaving ? -1 : at // a row on its way out can't be picked or highlighted
+                return (
+                <Fragment key={key}>
+                {headed && n === firstRest && section}
                 <div
+                  data-k={key} aria-hidden={leaving || undefined}
                   onClick={() => (setCursor(i), setOpen(t))} onAuxClick={e => e.button === 1 && popout(t)}
-                  className={`row${t.unread ? ' unread' : ''}${checked.has(keyOf(t)) ? ' checked' : ''}${i === cursor ? ' cursor' : ''}${open && keyOf(open) === keyOf(t) ? ' open' : ''}`}
+                  className={`row${t.unread ? ' unread' : ''}${!leaving && checked.has(keyOf(t)) ? ' checked' : ''}${i === cursor ? ' cursor' : ''}${!leaving && open && keyOf(open) === keyOf(t) ? ' open' : ''}`}
                 >
                   <span className="lead" onClick={e => e.stopPropagation()}>
                     <input type="checkbox" aria-label="Select conversation" title="Select (x)" checked={checked.has(keyOf(t))} onChange={() => toggle(t)} />
@@ -675,8 +713,9 @@ export function App() {
                   </span>
                 </div>
                 </Fragment>
-              ))}
-              {headed && top.length === threads.length && section}
+                )
+              })}
+              {headed && firstRest < 0 && section}
             </div>
           </div>
           )}
@@ -708,7 +747,8 @@ export function App() {
       {problem !== null && accounts.some(a => a.id === problem) && (
         <MailboxProblem account={accounts.find(a => a.id === problem)!} onClose={() => setProblem(null)} reload={load} />
       )}
-      {toast && <div className="toast" role="status">{toast}</div>}
+      {/* Always there, so it can slide away; it keeps the last words while it goes. */}
+      <div className={`toast${toast ? ' show' : ''}`} role="status" aria-hidden={!toast}>{toast || lastToast.current}</div>
     </div>
   )
 }
