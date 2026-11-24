@@ -5,7 +5,7 @@ import { Settings } from './Settings'
 import { SearchBox } from './Search'
 import { ThreadView } from './ThreadView'
 import { useListMotion } from './motion'
-import { type Account, type FolderRow, type Message, type Thread, Icon, IconButton, Logo, Menu, call, longDate, shortDate, who } from './lib'
+import { type Account, type FolderRow, type Message, type Thread, Icon, IconButton, Logo, Menu, call, fileKind, longDate, shortDate, who } from './lib'
 
 const pref = (key: string, fallback: string) => {
   try { return localStorage.getItem(`qm.${key}`) ?? fallback } catch { return fallback }
@@ -28,7 +28,9 @@ const NAV_TIP: Record<string, string> = {
 const SPONSOR = 'https://github.com/sponsors/mattgauzza'
 
 interface ViewState { account: number | null; folder: string; query: string }
-type Action = 'archive' | 'trash' | 'junk' | 'inbox' | 'read' | 'unread'
+type Action = 'archive' | 'trash' | 'junk' | 'inbox' | 'read' | 'unread' | 'move'
+/** Sidebar folders a conversation can be dragged onto. */
+const DROP = new Set(['inbox', 'archive', 'junk', 'trash'])
 
 const keyOf = (t: Thread) => `${t.accountId}:${t.threadId}`
 const clean = (e: any) => String(e?.message ?? e).replace(/^Error invoking remote method '\w+': (Error: )?/, '')
@@ -45,6 +47,7 @@ const KEYS: [keys: string, what: string][] = [
   ['s', 'Star / unstar'], ['Shift + i', 'Mark as read'], ['Shift + u', 'Mark as unread'],
   ['r', 'Reply'], ['a', 'Reply all'], ['f', 'Forward'], ['w', 'Open in a new window'], ['v', 'Reading pane on / off'],
   ['g then i', 'Go to Inbox'], ['g then s', 'Go to Starred'], ['g then t', 'Go to Sent'], ['g then d', 'Go to Drafts'],
+  ['Ctrl + z', 'Undo the last move or delete'], ['Ctrl + f', 'Find in this email (or search mail)'],
   ['Ctrl + Enter', 'Send (while writing)'], ['?', 'Show this list']
 ]
 
@@ -220,6 +223,11 @@ export function App() {
   const [toast, setToast] = useState('')
   const lastToast = useRef('')
   if (toast) lastToast.current = toast
+  // The last move or delete, so Ctrl+Z (or Undo on the toast) can put it back.
+  const lastMove = useRef<{ done: Promise<{ accountId: number }[]>; what: string } | null>(null)
+  const [undoable, setUndoable] = useState(false)
+  const dragging = useRef<Thread[]>([])
+  const [dropOn, setDropOn] = useState('')
   const [search, setSearch] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
   const paneRef = useRef<HTMLDivElement>(null)
@@ -268,7 +276,8 @@ export function App() {
   const shown = useListMotion(
     [...top.map((t, i) => ({ key: `u:${keyOf(t)}`, value: { t, i } })), ...rest.map((t, i) => ({ key: `r:${keyOf(t)}`, value: { t, i: top.length + i } }))],
     `${view.account}|${view.folder}|${view.query}|${page}|${folded.unread}|${folded.rest}|${layout}`,
-    listRef
+    listRef,
+    k => k.slice(2) // u:/r: prefix: a conversation moving between sections isn't new mail
   )
   const firstRest = shown.findIndex(s => s.key.startsWith('r:'))
   useEffect(() => {
@@ -287,9 +296,46 @@ export function App() {
     setKept(l => (keys ? l.filter(t => !keys.has(keyOf(t))) : l.length ? [] : l))
   }
   useEffect(() => forget(), [view, page])
-  const say = (msg: string) => {
+  const say = (msg: string, canUndo = false) => {
     setToast(msg)
-    setTimeout(() => setToast(t => (t === msg ? '' : t)), 4000)
+    setUndoable(canUndo)
+    setTimeout(() => setToast(t => (t === msg ? '' : t)), canUndo ? 8000 : 4000)
+  }
+  const undo = async () => {
+    const m = lastMove.current
+    if (!m) return say('Nothing to undo')
+    lastMove.current = null
+    say('Undoing…')
+    try {
+      const u = await m.done
+      if (!u.length) return say("That can't be undone")
+      seq.current++
+      await call('undoMove', u as any)
+      say(`Undone: ${m.what}`)
+    } catch (e) {
+      say(clean(e))
+    }
+    load()
+  }
+  /** Counts change at once with the list, not when the next reload comes back. */
+  const uncount = (ts: Thread[], read: boolean) => {
+    const un = ts.filter(t => t.unread > 0)
+    if (!un.length) return
+    const n = un.length
+    if (sectioned) setTotals(x => ({ ...x, unread: Math.max(0, x.unread - n) }))
+    if (view.folder !== 'trash' && view.folder !== 'junk') {
+      setUnreadAll(x => Math.max(0, x - n))
+      setUnreadPer(p => {
+        const out = { ...p }
+        for (const t of un) out[t.accountId] = Math.max(0, (out[t.accountId] ?? 0) - 1)
+        return out
+      })
+    }
+    setFolders(fs => fs.map(f => {
+      const mine = un.filter(t => t.accountId === f.accountId && (t.role ? t.role === f.role : t.folder === f.name))
+      return mine.length ? { ...f, unread: Math.max(0, f.unread - mine.reduce((s, t) => s + t.unread, 0)) } : f
+    }))
+    if (read) setUnreadRows(r => r.map(t => (un.some(x => keyOf(x) === keyOf(t)) ? { ...t, unread: 0 } : t)))
   }
   const scope = () =>
     view.query
@@ -373,10 +419,12 @@ export function App() {
     setTab('mail')
   }
 
-  const act = async (kind: Action, ts: Thread[]) => {
+  const act = async (kind: Action, ts: Thread[], dest = '') => {
     if (!ts.length) return
+    if (kind === 'move' && ts.every(t => t.role === dest || t.folder.toLowerCase() === dest)) return // dropped where they already are
     const ids = ts.flatMap(t => t.ids)
     const gone = kind !== 'read' && kind !== 'unread'
+    if (kind !== 'unread') uncount(ts, kind === 'read')
     if (gone) {
       // Any reload already in flight was fetched before this change, so its rows would bring the
       // removed conversations back. Retire it; the reload below replaces it.
@@ -395,10 +443,16 @@ export function App() {
     const n = ts.length === 1 ? 'Conversation' : `${ts.length} conversations`
     try {
       if (kind === 'read' || kind === 'unread') await call('setFlags', ids, { seen: kind === 'read' })
-      else if (kind === 'trash') (say(`${n} ${ts[0].role === 'trash' ? 'deleted forever' : 'moved to Trash'}`), await call('deleteMessages', ids))
       else {
-        say(`${n} ${kind === 'archive' ? 'archived' : kind === 'junk' ? 'marked as spam' : 'moved to Inbox'}`)
-        await call('moveMessages', ids, kind)
+        const target = kind === 'move' ? dest : kind
+        const forever = target === 'trash' && ts[0].role === 'trash'
+        const name = folders.find(f => !f.role && f.name.toLowerCase() === target)?.name ?? target
+        const what = target === 'trash' ? (forever ? 'deleted forever' : 'moved to Trash')
+          : target === 'archive' ? 'archived' : target === 'junk' ? 'marked as spam' : target === 'inbox' ? 'moved to Inbox' : `moved to ${name}`
+        const done = (target === 'trash' ? call('deleteMessages', ids) : call('moveMessages', ids, target)) as Promise<{ accountId: number }[]>
+        if (!forever) lastMove.current = { done, what: `${n.toLowerCase()} ${what}` }
+        say(`${n} ${what}`, !forever)
+        await done
       }
       if (gone) load()
     } catch (e) {
@@ -454,6 +508,12 @@ export function App() {
 
   useEffect(() => {
     const onKey = async (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !compose && !adding && !settings) {
+        const k = e.key.toLowerCase()
+        // Ctrl+F with a conversation open finds in it (the reader handles that); otherwise it searches mail.
+        if (k === 'f' && !open) return void (e.preventDefault(), searchRef.current?.focus(), searchRef.current?.select())
+        if (k === 'z' && !e.shiftKey && !typing(e)) return void (e.preventDefault(), undo())
+      }
       if (typing(e) || e.ctrlKey || e.metaKey || e.altKey || tab !== 'mail' || adding || settings) return
       if (help) return void (['Escape', '?'].includes(e.key) && setHelp(false))
       const first = prefix.current
@@ -528,6 +588,35 @@ export function App() {
   const count = (role: string) => folders.filter(f => f.role === role && inScope(f)).reduce((n, f) => n + (role === 'drafts' ? f.total : f.unread), 0)
   const custom = [...new Map(folders.filter(f => !f.role && f.total > 0 && inScope(f)).map(f => [f.name.toLowerCase(), f])).values()]
   const picked = threads.filter(t => checked.has(keyOf(t)))
+  /** Dragging a ticked row takes every ticked row along; any other row goes alone. */
+  const drag = (e: React.DragEvent, t: Thread) => {
+    const ts = checked.has(keyOf(t)) && picked.length > 1 ? picked : [t]
+    dragging.current = ts
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', ts.map(x => x.subject).join('\n'))
+    const ghost = document.createElement('div')
+    ghost.className = 'drag-ghost'
+    ghost.textContent = ts.length === 1 ? ts[0].subject || '(no subject)' : `${ts.length} conversations`
+    document.body.append(ghost)
+    e.dataTransfer.setDragImage(ghost, 16, 16)
+    setTimeout(() => ghost.remove())
+  }
+  const dropTarget = (folder: string) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!dragging.current.length) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      if (dropOn !== folder) setDropOn(folder)
+    },
+    onDragLeave: (e: React.DragEvent) => !e.currentTarget.contains(e.relatedTarget as Node) && setDropOn(d => (d === folder ? '' : d)),
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault()
+      const ts = dragging.current
+      dragging.current = []
+      setDropOn('')
+      act(DROP.has(folder) ? (folder as Action) : 'move', ts, folder)
+    }
+  })
   // Ticks or unticks one section of the inbox, leaving the other section's ticks alone.
   const groupBox = (group: Thread[], hidden: boolean, name: string) => (
     <input
@@ -577,14 +666,20 @@ export function App() {
         <button className="compose-btn" title="Write a new message (c)" onClick={() => newMail(blankDraft(defaultFrom()))}><Icon name="edit" /> Compose</button>
         <nav className="folders">
           {NAV.map(([key, label, icon]) => (
-            <button key={key} title={NAV_TIP[key]} className={tab === 'mail' && !view.query && view.folder === key ? 'on' : ''} onClick={() => go({ folder: key })}>
+            <button
+              key={key} title={NAV_TIP[key]} onClick={() => go({ folder: key })} {...(DROP.has(key) ? dropTarget(key) : {})}
+              className={`${tab === 'mail' && !view.query && view.folder === key ? 'on' : ''}${dropOn === key ? ' drop' : ''}`}
+            >
               <Icon name={icon} /> <span>{label}</span>
               {key === 'unread' && unreadAll > 0 && <em title={`${unreadAll.toLocaleString()} unread conversations`}>{unreadAll.toLocaleString()}</em>}
               {['inbox', 'drafts', 'junk'].includes(key) && count(key) > 0 && <em title={`${count(key).toLocaleString()} ${key === 'drafts' ? 'drafts' : 'unread'}`}>{count(key)}</em>}
             </button>
           ))}
           {custom.map(f => (
-            <button key={f.id} title={`Folder: ${f.name}`} className={tab === 'mail' && !view.query && view.folder === f.name.toLowerCase() ? 'on' : ''} onClick={() => go({ folder: f.name.toLowerCase() })}>
+            <button
+              key={f.id} title={`Folder: ${f.name}`} onClick={() => go({ folder: f.name.toLowerCase() })} {...dropTarget(f.name.toLowerCase())}
+              className={`${tab === 'mail' && !view.query && view.folder === f.name.toLowerCase() ? 'on' : ''}${dropOn === f.name.toLowerCase() ? ' drop' : ''}`}
+            >
               <Icon name="folder" /> <span>{f.name}</span>
               {f.unread > 0 && <em title={`${f.unread.toLocaleString()} unread`}>{f.unread}</em>}
             </button>
@@ -675,7 +770,8 @@ export function App() {
                 <Fragment key={key}>
                 {headed && n === firstRest && section}
                 <div
-                  data-k={key} aria-hidden={leaving || undefined}
+                  data-k={key} aria-hidden={leaving || undefined} draggable={!leaving}
+                  onDragStart={e => drag(e, t)} onDragEnd={() => ((dragging.current = []), setDropOn(''))}
                   onClick={() => (setCursor(i), setOpen(t))} onAuxClick={e => e.button === 1 && popout(t)}
                   className={`row${t.unread ? ' unread' : ''}${!leaving && checked.has(keyOf(t)) ? ' checked' : ''}${i === cursor ? ' cursor' : ''}${!leaving && open && keyOf(open) === keyOf(t) ? ' open' : ''}`}
                 >
@@ -699,7 +795,7 @@ export function App() {
                     <span className="row-chips" onClick={e => e.stopPropagation()}>
                       {t.files.slice(0, 3).map(f => (
                         <button className="chip file" key={`${f.id}:${f.index}`} title={`Open ${f.filename}`} onClick={() => window.qm.invoke('openAttachment', f.id, f.index).catch(e => say(clean(e)))}>
-                          <Icon name="attach" size={14} /> <span>{f.filename}</span>
+                          <span className="mini-badge" style={{ background: fileKind(f).color }}>{fileKind(f).label}</span> <span>{f.filename}</span>
                         </button>
                       ))}
                       {t.files.length > 3 && <span className="chip count" title={t.files.slice(3).map(f => f.filename).join(', ')}>+{t.files.length - 3}</span>}
@@ -748,7 +844,10 @@ export function App() {
         <MailboxProblem account={accounts.find(a => a.id === problem)!} onClose={() => setProblem(null)} reload={load} />
       )}
       {/* Always there, so it can slide away; it keeps the last words while it goes. */}
-      <div className={`toast${toast ? ' show' : ''}`} role="status" aria-hidden={!toast}>{toast || lastToast.current}</div>
+      <div className={`toast${toast ? ' show' : ''}`} role="status" aria-hidden={!toast}>
+        {toast || lastToast.current}
+        {undoable && <button className="toast-undo" tabIndex={toast ? 0 : -1} title="Undo (Ctrl+z)" onClick={undo}>Undo</button>}
+      </div>
     </div>
   )
 }

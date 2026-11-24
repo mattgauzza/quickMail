@@ -28,7 +28,7 @@ accounts.forEach(([email, name, color], i) => {
 
 // [account, folder role, from name, from address, subject, body, hours ago, unread, starred, attachments, thread]
 const mail = [
-  [1, 'inbox', 'Ava Chen', 'ava@northwind.example', 'Re: Website relaunch timeline', 'Monday works. I have attached the revised plan with the new dates; the only open question is whether the pricing page ships in the same release.', 0.3, 1, 0, ['relaunch-plan.pdf'], 't1'],
+  [1, 'inbox', 'Ava Chen', 'ava@northwind.example', 'Re: Website relaunch timeline', 'Monday works. I have attached the revised plan with the new dates; the only open question is whether the pricing page ships in the same release.', 0.3, 1, 0, ['relaunch-plan.pdf', 'relaunch-kickoff-presentation-final-v2-deck.pptx', 'launch-budget.xlsx'], 't1'],
   [1, 'inbox', 'Marcus Bell', 'marcus@bell.example', 'Re: Website relaunch timeline', 'Monday is fine for me too. I will send the hero copy tonight so design has it first thing.', 5, 0, 0, [], 't1'],
   [1, 'inbox', 'Ava Chen', 'ava@northwind.example', 'Website relaunch timeline', 'Can we get the new hero section in by Monday? Engineering says the rest is on track.', 28, 0, 0, [], 't1'],
   [2, 'inbox', 'Priya Natarajan', 'priya@studio.example', 'Brand photos from Thursday', 'Here are my picks from the shoot. The first two are the strongest for the homepage; the third works better cropped square.', 1.2, 1, 1, ['storefront-01.jpg', 'storefront-02.jpg', 'team-portrait.jpg', 'detail-04.jpg'], null],
@@ -69,7 +69,7 @@ mail.forEach(([a, where, name, addr, subject, body, hours, unread, star, files, 
     Math.round(now - hours * 3600e3), unread ? 0 : 1, star, files.length ? 1 : 0, body.slice(0, 200), body, html)
   db.prepare('INSERT INTO fts(rowid,subject,sender,recipients,body) VALUES(?,?,?,?,?)').run(id, subject, `${name} ${addr}`, to.map(t => t.address).join(' '), body)
   files.forEach((f, idx) =>
-    db.prepare('INSERT INTO attachments(message_id,idx,filename,mime,size) VALUES(?,?,?,?,?)').run(id, idx, f, f.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg', 180000 + idx * 52000))
+    db.prepare('INSERT INTO attachments(message_id,idx,filename,mime,size) VALUES(?,?,?,?,?)').run(id, idx, f, ({ pdf: 'application/pdf', jpg: 'image/jpeg', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })[f.split('.').pop()] || 'application/octet-stream', 180000 + idx * 52000))
   const file = path.join(home, 'raw', String(a), `${id}.eml`)
   fs.mkdirSync(path.dirname(file), { recursive: true })
   fs.writeFileSync(file, `From: ${name} <${addr}>\r\nSubject: ${subject}\r\nContent-Type: text/html; charset=utf-8\r\n\r\n${html}`)

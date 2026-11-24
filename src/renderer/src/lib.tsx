@@ -70,6 +70,28 @@ const PATHS: Record<string, string> = {
   rows: 'M4 15h16v-2H4v2zm0 4h16v-2H4v2zm0-8h16V9H4v2zm0-6v2h16V5H4z'
 }
 
+const KINDS: [exts: string[], label: string, name: string, color: string][] = [
+  [['pdf'], 'PDF', 'PDF', '#d93025'],
+  [['doc', 'docx', 'odt', 'rtf', 'pages'], 'DOC', 'Word document', '#1a73e8'],
+  [['xls', 'xlsx', 'xlsm', 'csv', 'ods', 'numbers'], 'XLS', 'Spreadsheet', '#188038'],
+  [['ppt', 'pptx', 'odp', 'key'], 'PPT', 'Presentation', '#e8710a'],
+  [['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'heic', 'tif', 'tiff', 'svg'], 'IMG', 'Image', '#9334e6'],
+  [['zip', 'rar', '7z', 'gz', 'tar', 'tgz'], 'ZIP', 'Archive', '#5f6368'],
+  [['mp4', 'mov', 'avi', 'mkv', 'webm'], 'VID', 'Video', '#c5221f'],
+  [['mp3', 'wav', 'm4a', 'ogg', 'flac'], 'AUD', 'Audio', '#007b83'],
+  [['ics'], 'ICS', 'Calendar invite', '#1a73e8'],
+  [['txt', 'md', 'log', 'json', 'xml'], 'TXT', 'Text', '#5f6368']
+]
+
+/** A short badge, a readable type and a colour for a file, from its extension (or its MIME type). */
+export function fileKind(f: { filename: string; mime?: string }) {
+  const ext = /\.([a-z0-9]{1,8})$/i.exec(f.filename)?.[1]?.toLowerCase() ?? ''
+  const hit = KINDS.find(k => k[0].includes(ext)) ?? ((f.mime ?? '').startsWith('image/') ? KINDS[4] : undefined)
+  return hit
+    ? { label: hit[1], name: hit[2], color: hit[3] }
+    : { label: (ext || 'file').slice(0, 4).toUpperCase(), name: ext ? `${ext.toUpperCase()} file` : 'File', color: '#5f6368' }
+}
+
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true">

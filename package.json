@@ -1,6 +1,6 @@
 {
   "name": "quickmail",
-  "version": "0.6.5",
+  "version": "0.7.0",
   "private": true,
   "description": "A fast, Gmail-style local mail client with a CLI for agents",
   "main": "out/main/index.js",
@@ -25,12 +25,14 @@
     "electron-updater": "^6.8.11",
     "imapflow": "^2.11.0",
     "mailparser": "^3.14.3",
-    "nodemailer": "^10.5.0"
+    "nodemailer": "^10.5.0",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/mailparser": "^3.9.0",
     "@types/node": "^26.6.6",
     "@types/nodemailer": "^8.0.2",
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",

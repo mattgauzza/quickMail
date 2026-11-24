@@ -1,9 +1,68 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { type ComposeState, replyDraft } from './Compose'
-import { type Message, type Meta, type Thread, Icon, IconButton, avatarColor, call, esc, fileSize, longDate, shortDate, who } from './lib'
+import { type Message, type Meta, type Thread, Icon, IconButton, avatarColor, call, esc, fileKind, fileSize, longDate, shortDate, who } from './lib'
 import { findCodes } from './Codes'
 
-const ROLE_LABEL: Record<string, string> = { inbox: 'Inbox', sent: 'Sent', drafts: 'Drafts', archive: 'Archive', junk: 'Spam', trash: 'Trash' }
+type Att = Message['attachments'][number]
+
+function Attachments({ id, files }: { id: number; files: Att[] }) {
+  const [saved, setSaved] = useState<Record<number, string>>({})
+  const [note, setNote] = useState<{ text: string; file?: string } | null>(null)
+  const total = files.reduce((n, f) => n + (f.size || 0), 0)
+  const fail = (e: unknown) => setNote({ text: `Couldn't do that: ${String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}` })
+  const saveAll = async () => {
+    try {
+      const paths = await window.qm.invoke('saveAllAttachments', id, files.map(f => ({ index: f.index, filename: f.filename })))
+      if (!paths) return
+      setSaved(Object.fromEntries(files.map((f, i) => [f.index, paths[i]])))
+      setNote({ text: `Saved ${paths.length} files`, file: paths[0] })
+    } catch (e) { fail(e) }
+  }
+  return (
+    <section className="files">
+      <div className="files-head">
+        <Icon name="attach" size={16} />
+        <span>{files.length === 1 ? '1 attachment' : `${files.length} attachments`} · {fileSize(total)}</span>
+        {files.length > 1 && <button type="button" className="link" onClick={saveAll}>Save all</button>}
+        {note && (
+          <span className="files-note">
+            {note.text}
+            {note.file && <button type="button" className="link" onClick={() => window.qm.invoke('showInFolder', note.file)}>Show in folder</button>}
+          </span>
+        )}
+      </div>
+      <div className="file-grid">
+        {files.map(f => {
+          const k = fileKind(f)
+          const open = () => window.qm.invoke('openAttachment', id, f.index).catch(fail)
+          const where = saved[f.index]
+          return (
+            <div className="file" key={f.index} role="button" tabIndex={0} title={`Open ${f.filename}`} onClick={open}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open() } }}>
+              <span className="file-badge" style={{ background: k.color }}>{k.label}</span>
+              <span className="file-text">
+                <b>{f.filename}</b>
+                <small>{where ? 'Saved' : `${k.name} · ${fileSize(f.size)}`}</small>
+              </span>
+              <span className="file-actions" onClick={e => e.stopPropagation()}>
+                {where
+                  ? <IconButton icon="folder" label="Show in folder" size={18} onClick={() => window.qm.invoke('showInFolder', where)} />
+                  : <IconButton icon="download" label={`Save ${f.filename}…`} size={18} onClick={async () => {
+                      try {
+                        const p = await window.qm.invoke('saveAttachment', id, f.index, f.filename)
+                        if (p) setSaved(s => ({ ...s, [f.index]: p }))
+                      } catch (e) { fail(e) }
+                    }} />}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+const ROLE_LABEL: Record<string, string> ={ inbox: 'Inbox', sent: 'Sent', drafts: 'Drafts', archive: 'Archive', junk: 'Spam', trash: 'Trash' }
 
 /** Email HTML is shown in a script-less sandboxed frame with its own strict content policy. */
 function Body({ html, text }: { html: string; text: string }) {
@@ -38,9 +97,16 @@ blockquote{margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex}a{color
           fit()
           if (d?.body) new ResizeObserver(fit).observe(d.body)
           d?.addEventListener('keydown', e => {
-            if (e.ctrlKey || e.metaKey || e.altKey) return // leave copy, select-all and friends alone
+            if (e.ctrlKey || e.metaKey || e.altKey) {
+              // Leave copy, select-all and friends alone; find and undo belong to the app.
+              if (!e.altKey && /^[fz]$/i.test(e.key)) (e.preventDefault(), window.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, ctrlKey: true, shiftKey: e.shiftKey })))
+              return
+            }
             window.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, shiftKey: e.shiftKey }))
           })
+          // Find (Ctrl+F) marks matches in here too; the frame needs its own copy of the marker styles.
+          const st = d?.createElement('style')
+          if (st) (st.textContent = FIND_CSS, d!.head.append(st))
           d?.addEventListener('mouseover', e => {
             const a = (e.target as Element | null)?.closest?.('a[href]')
             setHover(a?.getAttribute('href')?.trim() ?? '')
@@ -49,6 +115,101 @@ blockquote{margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex}a{color
       />
       {hover && <LinkPeek href={hover} />}
     </>
+  )
+}
+
+const FIND_CSS = '::highlight(qm-find){background:#fde293;color:#202124}::highlight(qm-find-cur){background:#f9a825;color:#202124}'
+
+/** Every place the words appear in the conversation, the message frames included, as ranges in their own documents. */
+function findRanges(root: HTMLElement, q: string): Range[] {
+  const out: Range[] = []
+  const needle = q.toLowerCase()
+  const scan = (doc: Document, from: Node) => {
+    const walker = doc.createTreeWalker(from, NodeFilter.SHOW_TEXT)
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const el = n.parentElement
+      if (!el || el.closest('script, style, title, .findbar')) continue
+      const text = (n.textContent ?? '').toLowerCase()
+      for (let at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + needle.length)) {
+        const r = doc.createRange()
+        r.setStart(n, at)
+        r.setEnd(n, at + needle.length)
+        out.push(r)
+      }
+    }
+  }
+  // Walk in reading order, stepping into each message frame where it sits.
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT)
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (n instanceof HTMLIFrameElement) { const d = n.contentDocument; if (d?.body) scan(d, d.body); continue }
+    if (n.nodeType !== Node.TEXT_NODE) continue
+    const el = n.parentElement
+    if (!el || el.closest('.findbar')) continue
+    const text = (n.textContent ?? '').toLowerCase()
+    for (let at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + needle.length)) {
+      const r = document.createRange()
+      r.setStart(n, at)
+      r.setEnd(n, at + needle.length)
+      out.push(r)
+    }
+  }
+  return out
+}
+
+/** Paints the matches, the current one brighter, in every document they belong to. */
+function paint(ranges: Range[], cur: number, docs: Document[]) {
+  for (const d of docs) {
+    const w = d.defaultView as any
+    if (!w?.CSS?.highlights) continue
+    const mine = ranges.filter(r => r.startContainer.ownerDocument === d)
+    w.CSS.highlights.set('qm-find', new w.Highlight(...mine.filter(r => r !== ranges[cur])))
+    w.CSS.highlights.set('qm-find-cur', new w.Highlight(...mine.filter(r => r === ranges[cur])))
+  }
+}
+const unpaint = (docs: Document[]) => docs.forEach(d => { const w = d.defaultView as any; w?.CSS?.highlights?.delete('qm-find'); w?.CSS?.highlights?.delete('qm-find-cur') })
+
+/** Ctrl+F inside the open conversation: highlights every match and steps through them. */
+function FindBar({ root, onClose }: { root: React.RefObject<HTMLDivElement | null>; onClose: () => void }) {
+  const [q, setQ] = useState('')
+  const [hits, setHits] = useState<Range[]>([])
+  const [cur, setCur] = useState(0)
+  const input = useRef<HTMLInputElement>(null)
+  const docs = () => [document, ...[...(root.current?.querySelectorAll('iframe') ?? [])].map(f => f.contentDocument).filter((d): d is Document => !!d)]
+  useEffect(() => {
+    const focus = () => (input.current?.focus(), input.current?.select())
+    focus()
+    window.addEventListener('qm-find', focus)
+    return () => (window.removeEventListener('qm-find', focus), unpaint(docs()))
+  }, [])
+  useEffect(() => {
+    // Messages still loading add text after a moment, so look again shortly.
+    const run = () => {
+      const found = q.trim() && root.current ? findRanges(root.current, q.trim()) : []
+      setHits(found)
+      setCur(c => (c < found.length ? c : 0))
+    }
+    run()
+    const again = setTimeout(run, 600)
+    return () => clearTimeout(again)
+  }, [q])
+  useEffect(() => {
+    paint(hits, cur, docs())
+    const r = hits[cur]
+    const el = r?.startContainer.parentElement
+    if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [hits, cur])
+  const step = (d: number) => hits.length && setCur(c => (c + d + hits.length) % hits.length)
+  return (
+    <div className="findbar" onKeyDown={e => {
+      if (e.key === 'Escape') (e.stopPropagation(), e.preventDefault(), onClose())
+      else if (e.key === 'Enter') (e.preventDefault(), step(e.shiftKey ? -1 : 1))
+    }}>
+      <input ref={input} value={q} onChange={e => setQ(e.target.value)} placeholder="Find in this email" spellCheck={false} aria-label="Find in this email" />
+      <span className="muted">{q.trim() ? (hits.length ? `${cur + 1} of ${hits.length}` : 'No matches') : ''}</span>
+      <IconButton icon="up" size={18} label="Previous match (Shift+Enter)" onClick={() => step(-1)} />
+      <IconButton icon="down" size={18} label="Next match (Enter)" onClick={() => step(1)} />
+      <IconButton icon="close" size={18} label="Close (Esc)" onClick={onClose} />
+    </div>
   )
 }
 
@@ -273,18 +434,7 @@ function Card(p: { meta: Meta; open: boolean; toggle: () => void; onCompose: (c:
               {msg.invite && <InviteCard id={msg.id} invite={msg.invite} />}
               <CopyBar html={msg.html} text={msg.text} />
               <div className="paper"><Body html={msg.html} text={msg.text} /></div>
-              {msg.attachments.length > 0 && (
-                <div className="chips">
-                  {msg.attachments.map(a => (
-                    <span className="chip file" key={a.index} title={`Open ${a.filename}`} onClick={() => window.qm.invoke('openAttachment', msg.id, a.index)}>
-                      <Icon name="attach" size={16} /> {a.filename} <i>{fileSize(a.size)}</i>
-                      <button aria-label={`Save ${a.filename}`} title="Save as…" onClick={e => (e.stopPropagation(), window.qm.invoke('saveAttachment', msg.id, a.index, a.filename))}>
-                        <Icon name="download" size={16} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
+              {msg.attachments.length > 0 && <Attachments id={msg.id} files={msg.attachments} />}
             </>
           )}
         </div>
@@ -307,6 +457,25 @@ export function ThreadView(p: {
   const [metas, setMetas] = useState<Meta[] | null>(null)
   const [open, setOpen] = useState<Set<number>>(new Set())
   const hidden = ['trash', 'junk'].includes(p.thread.role)
+  const [finding, setFinding] = useState(false)
+  const threadRef = useRef<HTMLDivElement>(null)
+  const metasRef = useRef<Meta[] | null>(null)
+  metasRef.current = metas
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'f') return
+      if ((e.target as HTMLElement)?.closest?.('.compose')) return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      // Every message is opened, so the words are found in all of them, not only the newest.
+      if (metasRef.current) setOpen(new Set(metasRef.current.map(m => m.id)))
+      setFinding(true)
+      window.dispatchEvent(new Event('qm-find')) // already open: focus it again
+    }
+    window.addEventListener('keydown', key, true)
+    return () => window.removeEventListener('keydown', key, true)
+  }, [])
+  useEffect(() => setFinding(false), [p.thread.id])
 
   useEffect(() => {
     let first = true
@@ -344,10 +513,11 @@ export function ThreadView(p: {
         {p.thread.role !== 'junk' && <IconButton icon="junk" label="Report spam (!)" onClick={() => p.onAct('junk')} />}
         <IconButton icon="trash" label={p.thread.role === 'trash' ? 'Delete forever' : 'Delete (#)'} onClick={() => p.onAct('trash')} />
         <IconButton icon="unread" label="Mark as unread (Shift+u)" onClick={() => p.onAct('unread')} />
-        {p.onPopout && <span className="pager"><IconButton icon="popout" label="Open in new window (w)" onClick={p.onPopout} /></span>}
+        {finding && <FindBar root={threadRef} onClose={() => setFinding(false)} />}
+        {p.onPopout && <span className={finding ? undefined : 'pager'}><IconButton icon="popout" label="Open in new window (w)" onClick={p.onPopout} /></span>}
       </div>
       {/* keyed by conversation, so each one opened fades in */}
-      <div className="thread" key={metas[0]?.id}>
+      <div className="thread" key={metas[0]?.id} ref={threadRef}>
         <h1>
           {last.subject || '(no subject)'} <span className="tag" title="The folder this conversation is in">{ROLE_LABEL[p.thread.role] ?? p.thread.folder}</span>
         </h1>

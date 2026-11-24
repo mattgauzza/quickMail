@@ -8,6 +8,9 @@ const EASE = 'cubic-bezier(.2, 0, 0, 1)'
 const LEAVE_MS = 420
 const MOVE_MS = 300
 const ENTER_MS = 260
+const ARRIVE_MS = 420
+const GLOW = 'rgba(26, 115, 232, .9)'
+const GLOW_BG = 'rgba(26, 115, 232, .14)'
 
 export interface Shown<T> { key: string; value: T; leaving: boolean }
 
@@ -16,7 +19,11 @@ export interface Shown<T> { key: string; value: T; leaving: boolean }
  * place they had, until their fade-out ends. `reset` changes when the whole list is swapped (another folder,
  * page or search): then nothing animates.
  */
-export function useListMotion<T>(items: { key: string; value: T }[], reset: string, box: RefObject<HTMLElement | null>): Shown<T>[] {
+export function useListMotion<T>(
+  items: { key: string; value: T }[], reset: string, box: RefObject<HTMLElement | null>,
+  /** The thing a key stands for, when one thing can show under different keys (a section prefix). */
+  same: (key: string) => string = k => k
+): Shown<T>[] {
   const [, redraw] = useReducer((n: number) => n + 1, 0)
   const shown = useRef<Shown<T>[]>([]) // what the last commit put on screen
   const lastReset = useRef(reset)
@@ -53,6 +60,7 @@ export function useListMotion<T>(items: { key: string; value: T }[], reset: stri
   useLayoutEffect(() => {
     const was = shown.current
     const wasKeys = new Set(was.map(s => s.key))
+    const wasSame = new Set(was.map(s => same(s.key)))
     shown.current = next
     lastReset.current = reset
     for (const k of finished.current) if (!next.some(n => n.key === k)) finished.current.delete(k)
@@ -108,6 +116,19 @@ export function useListMotion<T>(items: { key: string; value: T }[], reset: stri
       if (now.bottom < view.top || now.top > view.bottom) continue // off screen: nothing to see
       const then = rects?.get(n.key)
       if (!wasKeys.has(n.key) || !then) {
+        if (!firstFill && !wasSame.has(same(n.key))) {
+          // Something new arrived (new mail): it slides down into its place while the rows below glide
+          // down to make room, and glows for a moment so it is easy to spot.
+          row.animate(
+            [{ opacity: 0, transform: 'translateY(-100%)', clipPath: 'inset(100% 0 0 0)' }, { opacity: 1, transform: 'none', clipPath: 'inset(0 0 0 0)' }],
+            { duration: ARRIVE_MS, easing: EASE, fill: 'backwards' }
+          )
+          row.animate(
+            [{ boxShadow: `inset 3px 0 0 ${GLOW}, inset 0 0 0 999px ${GLOW_BG}` }, { boxShadow: 'inset 3px 0 0 transparent, inset 0 0 0 999px transparent' }],
+            { duration: 2200, delay: ARRIVE_MS, easing: 'ease-out', fill: 'backwards' }
+          )
+          continue
+        }
         // A new row. On a list's first fill the rows arrive one after another, top first.
         const delay = firstFill ? Math.min(stagger++, 14) * 18 : 0
         row.animate(

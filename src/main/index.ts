@@ -126,11 +126,19 @@ class Host {
 }
 
 let quiet: NodeJS.Timeout | undefined
+const resyncs = new Map<number, NodeJS.Timeout>()
 let held: NodeJS.Timeout | undefined
 const announce = () => (broadcast('changed'), rebadge())
 const onEvent = (role: 'ui' | 'bg') => (event: string, data: any) => {
   if (event === 'sync') return void win?.webContents.send('sync', data)
   if (event === 'open') return external(String(data))
+  if (event === 'resync') {
+    // A move or undo changed folders the window's host didn't sync: the background host checks that mailbox soon.
+    const id = Number(data)
+    clearTimeout(resyncs.get(id))
+    resyncs.set(id, setTimeout(() => (resyncs.delete(id), refresh(id).catch(() => {})), 1500))
+    return
+  }
   if (event !== 'changed') return
   if (role === 'ui') {
     // Something the user did: show it right away.
@@ -143,9 +151,10 @@ const bg = new Host('bg', onEvent('bg'))
 
 // Everything the window is allowed to call in the mail core.
 const METHODS = new Set([
-  'listAccounts', 'listFolders', 'listThreads', 'getThread', 'getMessage', 'setFlags', 'moveMessages', 'deleteMessages',
+  'listAccounts', 'listFolders', 'listThreads', 'getThread', 'getMessage', 'setFlags', 'moveMessages', 'deleteMessages', 'undoMove',
   'send', 'searchContacts', 'importAccounts', 'importContacts', 'importPasswords', 'setPassword', 'removeAccount',
-  'countThreads', 'addMailbox', 'respondInvite', 'listMessages', 'listRules', 'saveRule', 'removeRule', 'applyRules'
+  'countThreads', 'addMailbox', 'respondInvite', 'listMessages', 'listRules', 'saveRule', 'removeRule', 'applyRules',
+  'exportBundle'
 ])
 
 const broadcast = (channel: string, ...args: unknown[]) => BrowserWindow.getAllWindows().forEach(w => w.webContents.send(channel, ...args))
@@ -329,6 +338,26 @@ else {
     ipcMain.handle('saveAttachment', async (e, id: number, index: number, filename: string) => {
       const r = await dialog.showSaveDialog(owner(e), { defaultPath: path.join(app.getPath('downloads'), filename) })
       return r.filePath ? ui.call('saveAttachment', id, index, r.filePath) : null
+    })
+    // Every attachment of one message into a folder the user picks. Names that already exist get " (2)" etc.
+    ipcMain.handle('saveAllAttachments', async (e, id: number, files: { index: number; filename: string }[]) => {
+      const r = await dialog.showOpenDialog(owner(e), {
+        title: 'Save attachments to', defaultPath: app.getPath('downloads'), properties: ['openDirectory', 'createDirectory']
+      })
+      const dir = r.filePaths[0]
+      if (r.canceled || !dir) return null
+      const saved: string[] = []
+      for (const f of files) {
+        const name = path.basename(String(f.filename || `attachment-${f.index + 1}`).replace(/[\\/:*?"<>|]/g, '_'))
+        const ext = path.extname(name)
+        let dest = path.join(dir, name)
+        for (let n = 2; fs.existsSync(dest); n++) dest = path.join(dir, `${path.basename(name, ext)} (${n})${ext}`)
+        saved.push(await ui.call<string>('saveAttachment', id, f.index, dest))
+      }
+      return saved
+    })
+    ipcMain.handle('showInFolder', (_e, file: string) => {
+      if (typeof file === 'string' && path.isAbsolute(file) && fs.existsSync(file)) shell.showItemInFolder(file)
     })
 
     ipcMain.handle('signIn', async (_e, id: number) => {

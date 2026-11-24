@@ -10,12 +10,13 @@ const emit = (event: string, data?: unknown) => port.postMessage({ event, data }
 const METHODS: Record<string, (...a: any[]) => unknown> = {
   // What the window may call (the main process checks the name against its own list first).
   listAccounts: api.listAccounts, listFolders: api.listFolders, listThreads: api.listThreads, getThread: api.getThread,
-  getMessage: api.getMessage, setFlags: api.setFlags, moveMessages: api.moveMessages, deleteMessages: api.deleteMessages,
+  getMessage: api.getMessage, setFlags: api.setFlags, moveMessages: api.moveMessages, deleteMessages: api.deleteMessages, undoMove: api.undoMove,
   // The window's Send returns once the mail is delivered; filing in Sent and the answered flag follow on their own.
   send: (d: Parameters<typeof api.send>[0]) => api.send(d, { background: true }), searchContacts: api.searchContacts, importAccounts: api.importAccounts, importContacts: api.importContacts,
   importPasswords: api.importPasswords, setPassword: api.setPassword, removeAccount: api.removeAccount,
   countThreads: api.countThreads, addMailbox: api.addMailbox, respondInvite: api.respondInvite, listMessages: api.listMessages,
   listRules: api.listRules, saveRule: api.saveRule, removeRule: api.removeRule, applyRules: api.applyRules,
+  exportBundle: api.exportBundle,
   // What the main process itself needs.
   unreadInbox: api.unreadInbox,
   saveAttachment: api.saveAttachment,
@@ -34,6 +35,10 @@ const METHODS: Record<string, (...a: any[]) => unknown> = {
   exchangeCode: (id: number, code: string, verifier: string) => api.exchangeCode(api.account(id), code, verifier)
 }
 
+// The window's host leaves syncing a move's destination to the background host, so opening the next
+// message never waits behind it.
+if (process.env.QUICKMAIL_ROLE === 'ui') api.moveOptions.deferTargetSync = true
+api.events.on('resync', (accountId: number) => emit('resync', accountId))
 api.events.on('changed', () => emit('changed'))
 api.events.on('sync', p => emit('sync', p))
 

@@ -8,12 +8,13 @@ import { send } from './send'
 import { applyRules } from './rules'
 
 export { account, accounts, events, HOME } from './db'
-export { closeAll, deleteMessages, moveMessages, reindex, setFlags } from './imap'
+export { closeAll, deleteMessages, moveMessages, moveOptions, reindex, setFlags, undoMove } from './imap'
 export { send, type Draft } from './send'
 export { importAccounts, importContacts, importPasswords } from './thunderbird'
 export { authUrl, exchangeCode, googleSignIn, hasGoogleClient, isGoogle, setGoogleClient } from './oauth'
 export { listSms } from './sms'
 export { type Rule, type RuleResult, RULE_ACTIONS, applyRules, listRules, removeRule, saveRule } from './rules'
+export { exportBundle } from './transfer'
 
 export interface View {
   /** Account id, email (or unique part of it); omit for all accounts. */

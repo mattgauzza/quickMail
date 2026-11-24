@@ -613,12 +613,25 @@ export async function setFlags(ids: number[], f: { seen?: boolean; flagged?: boo
   }
 }
 
+/** Set by the window's mail host: after a move, leave syncing the destination folder to the background host
+ *  (announced with a 'resync' event) instead of holding this connection, which also opens mail, while it runs. */
+export const moveOptions = { deferTargetSync: false }
+
+/** What it takes to put moved messages back: per source folder, where they went and what they are called there. */
+export interface MoveUndo { accountId: number; from: string; to: string; toRole: string; uids: number[]; messageIds: string[] }
+
 /**
  * Move messages to a folder given by role, path or name. "archive" is created if the account has none;
  * with create=true any other missing folder (a Gmail label, e.g. "Money/Receipts") is created too.
+ * Returns what undoMove needs to put them back.
  */
-export async function moveMessages(ids: number[], dest: string, create = false) {
+export async function moveMessages(ids: number[], dest: string, create = false): Promise<MoveUndo[]> {
   const groups = locate(ids)
+  // Read before the rows are dropped: undo finds the messages again by their Message-ID if the server
+  // doesn't say which UIDs they got.
+  const messageIds = new Map<number, string>(
+    ids.length ? all<{ id: number; message_id: string }>(`SELECT id, message_id FROM messages WHERE id IN (${placeholders(ids.length)})`, ...ids).map(r => [r.id, r.message_id]) : []
+  )
   // Moving a Gmail message to Trash removes all of its labels on the server, including All Mail.
   // Capture those local copies before dropping the selected rows, but leave them alone for other
   // moves and other providers, where folders can contain independent copies.
@@ -633,6 +646,7 @@ export async function moveMessages(ids: number[], dest: string, create = false) 
   }
   dropMessages(ids)
   changed()
+  const undo: MoveUndo[] = []
   for (const g of groups.values()) {
     await onServer(g, async (c, a) => {
       let target = findFolder(a.id, dest)
@@ -655,7 +669,13 @@ export async function moveMessages(ids: number[], dest: string, create = false) 
         const res: any = await c.messageMove(uidsOf(g), destPath, { uid: true })
         // Servers that report what they moved (Gmail does) sometimes move only part of a large batch.
         // Saying so makes onServer resync the folder, which puts the unmoved messages back in the list.
-        const moved = res?.uidMap?.size
+        const map: Map<number, number> | undefined = res?.uidMap
+        undo.push({
+          accountId: a.id, from: g[0].path, to: destPath, toRole: target!.role,
+          uids: map ? g.map(x => map.get(x.uid)).filter((u): u is number => !!u) : [],
+          messageIds: g.map(x => messageIds.get(x.id) ?? '').filter(Boolean)
+        })
+        const moved = map?.size
         if (typeof moved === 'number' && moved < g.length)
           throw new Error(`${a.email}: the server moved only ${moved} of ${g.length} messages to ${target!.name}; the rest are still in place`)
       })
@@ -665,19 +685,49 @@ export async function moveMessages(ids: number[], dest: string, create = false) 
         dropMessages(copies)
         changed()
       }
-      await syncFolder(c, a, target)
+      if (moveOptions.deferTargetSync) events.emit('resync', a.id)
+      else await syncFolder(c, a, target)
     })
+  }
+  changed()
+  return undo
+}
+
+/** Puts messages moved by moveMessages back where they were. */
+export async function undoMove(undo: MoveUndo[]) {
+  for (const u of undo) {
+    const a = accountById(u.accountId)
+    const back = get<Folder>('SELECT * FROM folders WHERE account_id=? AND path=?', a.id, u.from)
+    if (!back) continue
+    await withImap(a, async c => {
+      await inFolder(c, u.to, async () => {
+        const uids = [...u.uids]
+        if (!uids.length) {
+          for (const id of u.messageIds) {
+            const found = await c.search({ header: { 'message-id': id } }, { uid: true })
+            if (found) uids.push(...found)
+          }
+        }
+        if (!uids.length) throw new Error(`Couldn't find the messages in ${u.to} to put them back`)
+        // Gmail's All Mail is every message: moving out of it would trash them, so the label is added instead.
+        if (isGmail(a.id) && u.toRole === 'archive') await c.messageCopy(uids.join(','), u.from, { uid: true })
+        else await c.messageMove(uids.join(','), u.from, { uid: true })
+      })
+      await syncFolder(c, a, back)
+    })
+    events.emit('resync', a.id) // the folder they left
   }
   changed()
 }
 
 /** Move to Trash; messages already in Trash (or with permanent=true) are deleted for good. */
-export async function deleteMessages(ids: number[], permanent = false) {
+export async function deleteMessages(ids: number[], permanent = false): Promise<MoveUndo[]> {
   const groups = [...locate(ids).values()]
   const hard = groups.filter(g => permanent || g[0].role === 'trash' || !folderByRole(g[0].account_id, 'trash'))
   const soft = groups.filter(g => !hard.includes(g))
-  if (soft.length) await moveMessages(soft.flat().map(x => x.id), 'trash')
+  const undo = soft.length ? await moveMessages(soft.flat().map(x => x.id), 'trash') : []
   dropMessages(hard.flat().map(x => x.id))
   changed()
   for (const g of hard) await onServer(g, c => inFolder(c, g[0].path, () => c.messageDelete(uidsOf(g), { uid: true })))
+  return undo
 }

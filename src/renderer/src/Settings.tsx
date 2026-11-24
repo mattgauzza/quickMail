@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { type Account, type FolderRow, Icon, IconButton, call } from './lib'
+import { PhoneExport } from './PhoneExport'
 
 type Rule = Awaited<ReturnType<typeof listRules>>[number]
 const listRules = () => call('listRules')
@@ -21,7 +22,7 @@ function describe(r: Rule, accounts: Account[]) {
 
 /** Settings: mailboxes and the sorting rules. The title, tabs, search and footer stay put; only the list scrolls. */
 export function Settings(p: { accounts: Account[]; folders: FolderRow[]; onClose: () => void; say: (msg: string) => void; onRemoved: (id: number) => void }) {
-  const [tab, setTab] = useState<'mailboxes' | 'rules'>('mailboxes')
+  const [tab, setTab] = useState<'mailboxes' | 'rules' | 'phone'>('mailboxes')
   const [mailQuery, setMailQuery] = useState('')
   const [ruleQuery, setRuleQuery] = useState('')
   const [rules, setRules] = useState<Rule[]>([])
@@ -85,10 +86,11 @@ export function Settings(p: { accounts: Account[]; folders: FolderRow[]; onClose
           <div className="settings-tabs" role="tablist">
             <button role="tab" aria-selected={tab === 'mailboxes'} className={tab === 'mailboxes' ? 'on' : ''} onClick={() => setTab('mailboxes')}>Mailboxes</button>
             <button role="tab" aria-selected={tab === 'rules'} className={tab === 'rules' ? 'on' : ''} onClick={() => setTab('rules')}>Sorting rules</button>
+            <button role="tab" aria-selected={tab === 'phone'} className={tab === 'phone' ? 'on' : ''} onClick={() => setTab('phone')}>Phone</button>
           </div>
         )}
 
-        {!edit && (
+        {!edit && tab !== 'phone' && (
           <input
             type="search" className="settings-search"
             placeholder={tab === 'mailboxes' ? 'Search mailboxes' : 'Search sorting rules'}
@@ -160,6 +162,8 @@ export function Settings(p: { accounts: Account[]; folders: FolderRow[]; onClose
               </ul>
             </>
           )}
+
+          {!edit && tab === 'phone' && <PhoneExport accounts={p.accounts} />}
 
           {!edit && error && <p className="error">{error}</p>}
 
