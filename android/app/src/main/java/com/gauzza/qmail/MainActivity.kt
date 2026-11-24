@@ -160,7 +160,8 @@ class AppModel(app: Application) : AndroidViewModel(app) {
                             // Play services can't find this Google account on the phone (often after an import).
                             a.auth == Auth.GOOGLE && e is com.google.android.gms.common.api.ApiException -> {
                                 nextGoogle += a.key
-                                nextProblems[a.key] = "This Google account isn't on the phone yet. Sign in to add it."
+                                nextProblems[a.key] = if (Accounts.googleClient(ctx) != null) "Sign in with Google to load this mailbox."
+                                    else "This Google account isn't on the phone yet. Sign in to add it."
                             }
                             else -> nextProblems[a.key] = friendly(e)
                         }
@@ -208,19 +209,18 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Finishes Google sign-in: checks the Gmail permission was granted, finds the address, tests IMAP. */
-    suspend fun googleSignedIn(r: AuthorizationResult): String? = try {
-        val token = r.accessToken
+    suspend fun googleSignedIn(s: Google.Signed): String? = try {
+        val token = s.access
         when {
-            token == null -> "Google didn't grant access. Try again."
-            Google.MAIL !in r.grantedScopes -> "Qmail needs permission to read, send and organise your Gmail. " +
-                "Sign in again and tick that box."
             else -> {
                 val email = Google.emailOf(token)
                 val old = accountOf(email.lowercase())
                 val a = Account(email, "imap.gmail.com", 993, Security.SSL, email, Auth.GOOGLE,
                     smtpHost = old?.smtpHost ?: "smtp.gmail.com")
                 Mail.inbox(a, token) { f -> f.messageCount }
-                Accounts.save(ctx, a, null)
+                // A browser sign-in keeps its refresh token; a Play services one keeps nothing here.
+                Accounts.save(ctx, a, s.refresh)
+                GoogleWeb.forget(a.key)
                 needsGoogle = needsGoogle - a.key
                 problems = problems - a.key
                 added()
@@ -232,12 +232,15 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Adds the mailboxes from the computer's QR code. Returns what to tell the user. */
-    fun importFrom(incoming: List<Transfer.Incoming>): String {
+    fun importFrom(opened: Transfer.Opened): String {
+        opened.google?.let { Accounts.saveGoogleClient(ctx, it) }
+        val incoming = opened.incoming
         val usable = incoming.filter { it.account.auth != Auth.MICROSOFT }
+        usable.forEach { GoogleWeb.forget(it.account.key) }
         val skipped = incoming.size - usable.size
         usable.forEach { Accounts.save(ctx, it.account, it.password) }
         added()
-        val google = usable.count { it.account.auth == Auth.GOOGLE }
+        val google = usable.count { it.account.auth == Auth.GOOGLE && it.password == null }
         return buildString {
             append(if (usable.size == 1) "Added 1 mailbox." else "Added ${usable.size} mailboxes.")
             if (google > 0) append(if (google == 1) " The Google one needs you to sign in." else " The $google Google ones need you to sign in.")

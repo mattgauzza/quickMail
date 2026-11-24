@@ -552,7 +552,7 @@ fun InboxScreen(model: AppModel, list: LazyListState) {
                                     val a = model.accountOf(key)
                                     Problem(a?.email.takeIf { many || model.error != null }, text)
                                     if (key in model.needsGoogle && a != null) {
-                                        Button(onClick = { google(null) }, Modifier.padding(start = 36.dp)) {
+                                        Button(onClick = { google(a.email) }, Modifier.padding(start = 36.dp)) {
                                             Text(if (many) "Sign in to ${a.email}" else "Sign in with Google", maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis)
                                         }

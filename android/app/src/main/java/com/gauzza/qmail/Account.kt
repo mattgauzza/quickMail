@@ -93,10 +93,22 @@ object Accounts {
         SyncState.migrate(ctx, a.key)
     }
 
+    /** Qmail's Google client (from the computer), for Gmail without the Google account on the phone. */
+    data class GoogleClient(val id: String, val secret: String)
+
+    fun googleClient(ctx: Context): GoogleClient? = prefs(ctx).getString("google-client", null)?.let { sealed ->
+        runCatching { JSONObject(Secrets.open(sealed)).let { GoogleClient(it.getString("i"), it.getString("s")) } }.getOrNull()
+    }
+
+    fun saveGoogleClient(ctx: Context, c: GoogleClient) {
+        prefs(ctx).edit().putString("google-client", Secrets.seal(JSONObject().put("i", c.id).put("s", c.secret).toString())).apply()
+    }
+
+    /** The saved password; for a Google mailbox, its refresh token (none when Play services signs it in). */
     fun password(ctx: Context, a: Account): String? =
         prefs(ctx).getString("secret:${a.key}", null)?.let { runCatching { Secrets.open(it) }.getOrNull() }
 
-    /** Adds or replaces an account. [password] is null for Google accounts, which keep no secret here. */
+    /** Adds or replaces an account. [password] is a Google mailbox's refresh token, or null when Play services signs it in. */
     fun save(ctx: Context, a: Account, password: String?) {
         val list = all(ctx)
         write(ctx, if (list.any { it.key == a.key }) list.map { if (it.key == a.key) a else it } else list + a)
@@ -111,7 +123,7 @@ object Accounts {
     /** What IMAP gets as the password: the saved one, or a fresh Google access token. */
     suspend fun secret(ctx: Context, a: Account): String = when (a.auth) {
         Auth.PASSWORD -> password(ctx, a) ?: throw MissingPassword(a.email)
-        Auth.GOOGLE -> Google.token(ctx, a.email)
+        Auth.GOOGLE -> Google.token(ctx, a)
         Auth.MICROSOFT -> throw NotOnPhone(a.email)
     }
 

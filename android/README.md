@@ -8,7 +8,7 @@ Why native and not a wrapper around the desktop code: see `../docs/android-plan.
 - Several mailboxes, with **All inboxes** (every account's inbox together, a coloured dot per account) and each
   mailbox's own folders in the drawer. Add them by:
   - **Import from computer**: in the desktop app open Settings → Phone → Show QR code, scan it, and type the
-    five-word passphrase shown beside it. Password mailboxes arrive ready to use; Google ones need one sign-in tap;
+    five-word passphrase shown beside it. Password and Google mailboxes arrive ready to use (Google ones bring their sign-in);
     Microsoft ones are skipped for now. The format is in `../src/core/transfer.ts` and `Transfer.kt`.
   - **Sign in with Google** for Gmail (see below), or
   - email, password or app password, and IMAP server. Common providers fill in automatically.
@@ -31,7 +31,16 @@ sending, starring, and importing accounts from the desktop app.
 
 ## Gmail sign-in
 
-This uses Google Play services' Authorization API with the `https://mail.google.com/` and `email` scopes, and IMAP
+There are two ways, and neither needs the Google account added to the phone when the first is available.
+
+**Through the computer's Google client (`GoogleWeb.kt`).** An import from the desktop brings Qmail's "Desktop app"
+OAuth client (ID and secret) and each Gmail mailbox's refresh token, all stored encrypted with the Keystore. Access
+tokens come from `oauth2.googleapis.com/token`. Once the client is on the phone, **Sign in** and **Continue with Google**
+open Google's page in the browser and catch the redirect on a one-off listener at `http://127.0.0.1:<port>`, exactly
+as the desktop app does, then keep the new refresh token. The page that ends sign-in links back with
+`qmail://signed-in`. A revoked sign-in (`invalid_grant`) shows **Sign in** again.
+
+**Through Play services (no import yet).** This uses Google Play services' Authorization API with the `https://mail.google.com/` and `email` scopes, and IMAP
 logs in with XOAUTH2. The app holds no client secret and no refresh token. Play services hands out a fresh access
 token whenever one is needed, including for the background check. If Google ever wants the user back (access revoked,
 password changed), the inbox shows "Sign in again" and the background check posts a notification saying so.

@@ -23,14 +23,17 @@ object Transfer {
     class NotACode : Exception("That QR code isn't from Qmail on a computer. On the computer, open Settings, then Phone.")
     class WrongPassphrase : Exception("That passphrase doesn't match this code. Check the words on the computer screen.")
 
-    /** One mailbox from the computer. [password] is null for Google and Microsoft mailboxes. */
+    /** One mailbox from the computer. [password] is a Google mailbox's refresh token; null for Microsoft. */
     data class Incoming(val account: Account, val password: String?)
+
+    /** Everything in a code: the mailboxes, and Qmail's Google client when Gmail is among them. */
+    data class Opened(val incoming: List<Incoming>, val google: Accounts.GoogleClient?)
 
     fun looksRight(code: String) = code.trim().startsWith(PREFIX)
 
     fun normalize(p: String) = p.trim().lowercase().split(Regex("[\\s\\-_.,]+")).filter { it.isNotEmpty() }.joinToString(" ")
 
-    suspend fun open(code: String, passphrase: String): List<Incoming> = withContext(Dispatchers.Default) {
+    suspend fun open(code: String, passphrase: String): Opened = withContext(Dispatchers.Default) {
         if (!looksRight(code)) throw NotACode()
         val raw = runCatching { Base64.decode(code.trim().removePrefix(PREFIX), Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP) }
             .getOrElse { throw NotACode() }
@@ -50,7 +53,8 @@ object Transfer {
         }
         val json = JSONObject(GZIPInputStream(plain.inputStream()).bufferedReader().readText())
         val list = json.getJSONArray("a")
-        (0 until list.length()).map { i ->
+        val google = json.optJSONObject("g")?.let { Accounts.GoogleClient(it.getString("i"), it.getString("s")) }
+        val incoming = (0 until list.length()).map { i ->
             val o = list.getJSONObject(i)
             val email = o.getString("e")
             val auth = when (o.optString("k")) { "google" -> Auth.GOOGLE; "microsoft" -> Auth.MICROSOFT; else -> Auth.PASSWORD }
@@ -68,8 +72,9 @@ object Transfer {
                     smtpPort = o.optInt("sp", 465),
                     smtpSsl = o.optInt("ss", 1) == 1,
                 ),
-                o.optString("p").ifEmpty { null },
+                (if (auth == Auth.GOOGLE) o.optString("r") else o.optString("p")).ifEmpty { null },
             )
         }
+        Opened(incoming, google)
     }
 }

@@ -68,7 +68,7 @@ export function PhoneExport(p: { accounts: Account[] }) {
     <div className="phone-export">
       <p className="help">
         Add these mailboxes to Qmail on your phone without typing them in. Nothing goes through a server: the phone reads a QR code
-        from this screen. Password mailboxes arrive ready to use. Google mailboxes need one tap to sign in on the phone;
+        from this screen. Password mailboxes arrive ready to use. Google mailboxes bring their sign-in with them;
         Microsoft mailboxes can't be used on the phone yet.
       </p>
       <ul className="rules">
@@ -77,7 +77,7 @@ export function PhoneExport(p: { accounts: Account[] }) {
             <label className="check phone-pick">
               <input type="checkbox" checked={picked.has(a.id)} onChange={() => toggle(a.id)} />
               <span className="dot" style={{ background: a.color }} /> <span>{a.email}</span>
-              <small className="muted">{kind(a) === 'password' ? 'Password' : kind(a) === 'Google' ? 'Google sign-in on the phone' : 'Microsoft: not on the phone yet'}</small>
+              <small className="muted">{kind(a) === 'password' ? 'Password' : kind(a) === 'Google' ? 'Google: signed in' : 'Microsoft: not on the phone yet'}</small>
             </label>
           </li>
         ))}
