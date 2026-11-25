@@ -23,11 +23,11 @@ object Transfer {
     class NotACode : Exception("That QR code isn't from Qmail on a computer. On the computer, open Settings, then Phone.")
     class WrongPassphrase : Exception("That passphrase doesn't match this code. Check the words on the computer screen.")
 
-    /** One mailbox from the computer. [password] is a Google mailbox's refresh token; null for Microsoft. */
+    /** One mailbox from the computer. [password] is a Google or Microsoft mailbox's refresh token. */
     data class Incoming(val account: Account, val password: String?)
 
-    /** Everything in a code: the mailboxes, and Qmail's Google client when Gmail is among them. */
-    data class Opened(val incoming: List<Incoming>, val google: Accounts.GoogleClient?)
+    /** Everything in a code: the mailboxes, Qmail's Google client when Gmail is among them, and the Microsoft client ID. */
+    data class Opened(val incoming: List<Incoming>, val google: Accounts.GoogleClient?, val microsoft: String? = null)
 
     fun looksRight(code: String) = code.trim().startsWith(PREFIX)
 
@@ -72,9 +72,9 @@ object Transfer {
                     smtpPort = o.optInt("sp", 465),
                     smtpSsl = o.optInt("ss", 1) == 1,
                 ),
-                (if (auth == Auth.GOOGLE) o.optString("r") else o.optString("p")).ifEmpty { null },
+                (if (auth == Auth.PASSWORD) o.optString("p") else o.optString("r")).ifEmpty { null },
             )
         }
-        Opened(incoming, google)
+        Opened(incoming, google, json.optString("m").ifEmpty { null })
     }
 }

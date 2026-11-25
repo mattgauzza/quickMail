@@ -8,8 +8,8 @@ Why native and not a wrapper around the desktop code: see `../docs/android-plan.
 - Several mailboxes, with **All inboxes** (every account's inbox together, a coloured dot per account) and each
   mailbox's own folders in the drawer. Add them by:
   - **Import from computer**: in the desktop app open Settings → Phone → Show QR code, scan it, and type the
-    five-word passphrase shown beside it. Password and Google mailboxes arrive ready to use (Google ones bring their sign-in);
-    Microsoft ones are skipped for now. The format is in `../src/core/transfer.ts` and `Transfer.kt`.
+    five-word passphrase shown beside it. Password, Google and Microsoft mailboxes arrive ready to use
+    (Google and Microsoft ones bring their sign-in). The format is in `../src/core/transfer.ts` and `Transfer.kt`.
   - **Sign in with Google** for Gmail (see below), or
   - email, password or app password, and IMAP server. Common providers fill in automatically.
     The login is tested before it is saved.
@@ -26,7 +26,7 @@ Why native and not a wrapper around the desktop code: see `../docs/android-plan.
 - Background check: WorkManager every 15 minutes while online. It posts one notification per batch of
   new mail ("2 new emails" with one line per message) and never repeats mail you already saw in the list.
 
-Not yet: Microsoft mailboxes, a local message store and search,
+Not yet: a local message store and search,
 sending, starring, and importing accounts from the desktop app.
 
 ## Gmail sign-in
@@ -55,6 +55,16 @@ Google only issues tokens to builds it knows. Each signing key needs an **Androi
 
 While the consent screen is in Testing, only the listed test users can sign in, the same as on desktop.
 Without the client, sign-in fails with "Google doesn't recognise this build of Qmail yet".
+
+## Microsoft mailboxes
+
+They come only from the computer (`Microsoft.kt`). The code carries the mailbox's refresh token and the public client
+ID it was issued to (no secret). The phone gets access tokens from `login.microsoftonline.com/common/oauth2/v2.0/token`,
+saves the new refresh token Microsoft returns each time, and logs in to `outlook.office365.com` with XOAUTH2.
+There is no Microsoft sign-in on the phone: the desktop flow ends by pasting a `https://localhost` link, which doesn't
+suit a phone. When Microsoft ends the sign-in (`invalid_grant`, `interaction_required`), the mailbox and a notification
+say to send it from the computer again. A Microsoft refresh token is about 1,500 characters, so the QR code gets dense
+(about version 33 with seven mailboxes); the desktop draws it larger to keep it scannable.
 
 ## Build
 

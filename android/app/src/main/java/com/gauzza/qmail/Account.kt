@@ -14,7 +14,7 @@ import javax.crypto.spec.GCMParameterSpec
 
 enum class Security { SSL, STARTTLS, NONE }
 
-/** How the account logs in: a stored password, or a token fetched when needed. Microsoft isn't on the phone yet. */
+/** How the account logs in: a stored password, or a token fetched when needed (Google, or Microsoft from the computer). */
 enum class Auth { PASSWORD, GOOGLE, MICROSOFT }
 
 data class Account(
@@ -50,7 +50,7 @@ fun guessImap(email: String): Pair<String, Int> {
 
 /** Every mailbox on the phone. Settings live in app-private prefs; each password is sealed with the Keystore. */
 object Accounts {
-    private fun prefs(ctx: Context) = ctx.getSharedPreferences("account", Context.MODE_PRIVATE)
+    internal fun prefs(ctx: Context) = ctx.getSharedPreferences("account", Context.MODE_PRIVATE)
 
     private fun toJson(a: Account) = JSONObject()
         .put("email", a.email).put("host", a.host).put("port", a.port).put("security", a.security.name)
@@ -104,11 +104,11 @@ object Accounts {
         prefs(ctx).edit().putString("google-client", Secrets.seal(JSONObject().put("i", c.id).put("s", c.secret).toString())).apply()
     }
 
-    /** The saved password; for a Google mailbox, its refresh token (none when Play services signs it in). */
+    /** The saved password; for a Google or Microsoft mailbox, its refresh token (none when Play services signs Gmail in). */
     fun password(ctx: Context, a: Account): String? =
         prefs(ctx).getString("secret:${a.key}", null)?.let { runCatching { Secrets.open(it) }.getOrNull() }
 
-    /** Adds or replaces an account. [password] is a Google mailbox's refresh token, or null when Play services signs it in. */
+    /** Adds or replaces an account. [password] is a Google or Microsoft refresh token, or null when Play services signs Gmail in. */
     fun save(ctx: Context, a: Account, password: String?) {
         val list = all(ctx)
         write(ctx, if (list.any { it.key == a.key }) list.map { if (it.key == a.key) a else it } else list + a)
@@ -118,13 +118,12 @@ object Accounts {
     }
 
     class MissingPassword(email: String) : Exception("There's no saved password for $email. Remove it and add it again.")
-    class NotOnPhone(email: String) : Exception("Microsoft mailboxes like $email can't be read on the phone yet.")
 
-    /** What IMAP gets as the password: the saved one, or a fresh Google access token. */
+    /** What IMAP gets as the password: the saved one, or a fresh Google or Microsoft access token. */
     suspend fun secret(ctx: Context, a: Account): String = when (a.auth) {
         Auth.PASSWORD -> password(ctx, a) ?: throw MissingPassword(a.email)
         Auth.GOOGLE -> Google.token(ctx, a)
-        Auth.MICROSOFT -> throw NotOnPhone(a.email)
+        Auth.MICROSOFT -> Microsoft.access(ctx, a)
     }
 
     fun remove(ctx: Context, a: Account) {

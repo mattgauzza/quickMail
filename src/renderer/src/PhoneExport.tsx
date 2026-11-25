@@ -9,6 +9,7 @@ export function PhoneExport(p: { accounts: Account[] }) {
   const [picked, setPicked] = useState<Set<number>>(() => new Set(p.accounts.map(a => a.id)))
   const [bundle, setBundle] = useState<Bundle | null>(null)
   const [image, setImage] = useState('')
+  const [size, setSize] = useState(320)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -24,7 +25,11 @@ export function PhoneExport(p: { accounts: Account[] }) {
     setError('')
     try {
       const b: Bundle = await call('exportBundle', [...picked])
-      setImage(await QRCode.toDataURL(b.code, { errorCorrectionLevel: 'L', margin: 2, width: 320, color: { dark: '#000000', light: '#ffffff' } }))
+      // A Microsoft sign-in makes the code dense, so draw it at about 4px per square to keep it easy to scan.
+      const modules = QRCode.create(b.code, { errorCorrectionLevel: 'L' }).modules.size
+      const width = Math.max(320, Math.min(640, (modules + 4) * 4))
+      setImage(await QRCode.toDataURL(b.code, { errorCorrectionLevel: 'L', margin: 2, width, color: { dark: '#000000', light: '#ffffff' } }))
+      setSize(width)
       setBundle(b)
     } catch (e) {
       setError(String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
@@ -42,7 +47,7 @@ export function PhoneExport(p: { accounts: Account[] }) {
     return (
       <div className="phone-export">
         <div className="phone-code">
-          <img src={image} width={320} height={320} alt="QR code for the Qmail phone app" />
+          <img src={image} width={size} height={size} alt="QR code for the Qmail phone app" />
           <div className="phone-steps">
             <ol>
               <li>On the phone, open Qmail and tap <b>Import from computer</b> (in the menu, or on the first screen).</li>
@@ -68,8 +73,7 @@ export function PhoneExport(p: { accounts: Account[] }) {
     <div className="phone-export">
       <p className="help">
         Add these mailboxes to Qmail on your phone without typing them in. Nothing goes through a server: the phone reads a QR code
-        from this screen. Password mailboxes arrive ready to use. Google mailboxes bring their sign-in with them;
-        Microsoft mailboxes can't be used on the phone yet.
+        from this screen. Password mailboxes arrive ready to use, and Google and Microsoft mailboxes bring their sign-in with them.
       </p>
       <ul className="rules">
         {p.accounts.map(a => (
@@ -77,7 +81,7 @@ export function PhoneExport(p: { accounts: Account[] }) {
             <label className="check phone-pick">
               <input type="checkbox" checked={picked.has(a.id)} onChange={() => toggle(a.id)} />
               <span className="dot" style={{ background: a.color }} /> <span>{a.email}</span>
-              <small className="muted">{kind(a) === 'password' ? 'Password' : kind(a) === 'Google' ? 'Google: signed in' : 'Microsoft: not on the phone yet'}</small>
+              <small className="muted">{kind(a) === 'password' ? 'Password' : `${kind(a)}: signed in`}</small>
             </label>
           </li>
         ))}

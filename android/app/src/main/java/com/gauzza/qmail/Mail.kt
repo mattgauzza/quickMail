@@ -47,8 +47,8 @@ object Mail {
         p["mail.$proto.timeout"] = "30000"
         p["mail.$proto.writetimeout"] = "30000"
         if (a.security == Security.SSL) p["mail.imaps.ssl.checkserveridentity"] = "true"
-        // Google accounts log in with SASL XOAUTH2, the access token taking the password's place.
-        if (a.auth == Auth.GOOGLE) p["mail.$proto.auth.mechanisms"] = "XOAUTH2"
+        // Google and Microsoft accounts log in with SASL XOAUTH2, the access token taking the password's place.
+        if (a.auth != Auth.PASSWORD) p["mail.$proto.auth.mechanisms"] = "XOAUTH2"
         if (a.security == Security.STARTTLS) {
             p["mail.imap.starttls.enable"] = "true"
             p["mail.imap.starttls.required"] = "true"

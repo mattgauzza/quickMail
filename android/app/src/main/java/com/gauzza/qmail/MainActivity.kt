@@ -234,9 +234,11 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     /** Adds the mailboxes from the computer's QR code. Returns what to tell the user. */
     fun importFrom(opened: Transfer.Opened): String {
         opened.google?.let { Accounts.saveGoogleClient(ctx, it) }
+        opened.microsoft?.let { Microsoft.saveClientId(ctx, it) }
         val incoming = opened.incoming
-        val usable = incoming.filter { it.account.auth != Auth.MICROSOFT }
-        usable.forEach { GoogleWeb.forget(it.account.key) }
+        // A Microsoft mailbox is only usable with its sign-in (older codes didn't carry one).
+        val usable = incoming.filter { it.account.auth != Auth.MICROSOFT || it.password != null }
+        usable.forEach { GoogleWeb.forget(it.account.key); Microsoft.forget(it.account.key) }
         val skipped = incoming.size - usable.size
         usable.forEach { Accounts.save(ctx, it.account, it.password) }
         added()
@@ -244,7 +246,10 @@ class AppModel(app: Application) : AndroidViewModel(app) {
         return buildString {
             append(if (usable.size == 1) "Added 1 mailbox." else "Added ${usable.size} mailboxes.")
             if (google > 0) append(if (google == 1) " The Google one needs you to sign in." else " The $google Google ones need you to sign in.")
-            if (skipped > 0) append(if (skipped == 1) " Skipped 1 Microsoft mailbox: not on the phone yet." else " Skipped $skipped Microsoft mailboxes: not on the phone yet.")
+            if (skipped > 0) append(
+                if (skipped == 1) " Skipped 1 Microsoft mailbox: its sign-in didn't come with the code. Update Qmail on the computer and send it again."
+                else " Skipped $skipped Microsoft mailboxes: their sign-in didn't come with the code. Update Qmail on the computer and send them again.",
+            )
         }
     }
 

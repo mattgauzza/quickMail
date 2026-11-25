@@ -6,12 +6,12 @@
 // and shown as a QR code. The passphrase is shown beside the code, never inside it, so a photo of the
 // QR alone gives nothing away. The Android app (android/.../Transfer.kt) reads the same format.
 //
-// Google mailboxes travel with their long-lived sign-in (refresh token) and Qmail's Google client, so the
-// phone reads them without the Google account being added to Android. Microsoft mailboxes travel without a secret.
+// Google and Microsoft mailboxes travel with their long-lived sign-in (refresh token) and the client it was
+// issued to, so the phone reads them without the account being added to Android.
 import { createCipheriv, pbkdf2Sync, randomBytes, randomInt } from 'node:crypto'
 import { gzipSync } from 'node:zlib'
 import { all } from './db'
-import { googleClient } from './oauth'
+import { MS, googleClient } from './oauth'
 import { getSecret, oauthKey, passwordKey } from './secrets'
 
 export const BUNDLE_PREFIX = 'QMX1:'
@@ -60,8 +60,8 @@ export function exportBundle(ids: number[] = []) {
   const accounts = rows.map(a => {
     const kind = a.auth !== 'oauth2' ? 'password' : /gmail|googlemail/i.test(a.imap_host) ? 'google' : 'microsoft'
     const password = kind === 'password' ? getSecret(passwordKey(a)) : null
-    // Google: the refresh token, so the phone needs no Google screens at all. Without one it signs in itself.
-    const refresh = kind === 'google' ? getSecret(oauthKey(a)) : null
+    // Google and Microsoft: the refresh token, so the phone needs no sign-in screens at all.
+    const refresh = kind !== 'password' ? getSecret(oauthKey(a)) : null
     if (kind === 'password' && !password) missing.push(a.email)
     // Short keys keep the QR code small enough to scan easily.
     return {
@@ -74,7 +74,9 @@ export function exportBundle(ids: number[] = []) {
   const passphrase = makePassphrase()
   // The Google client lets the phone refresh those tokens, and sign in to more Gmail in its browser.
   const client = accounts.some(a => a.k === 'google') ? googleClient() : null
-  const extra = client ? { g: { i: client.id, s: client.secret } } : {}
+  const extra: Record<string, unknown> = client ? { g: { i: client.id, s: client.secret } } : {}
+  // Microsoft's public client has no secret; the phone needs its ID to refresh the token.
+  if (accounts.some(a => a.k === 'microsoft')) extra.m = MS.clientId
   return { code: sealBundle(accounts, passphrase, extra), passphrase, count: rows.length, missing }
 }
 

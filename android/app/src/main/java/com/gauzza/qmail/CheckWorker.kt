@@ -33,7 +33,6 @@ class CheckWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
         val ctx = applicationContext
         var retry = false
         for (account in Accounts.all(ctx)) {
-            if (account.auth == Auth.MICROSOFT) continue
             try {
                 val key = account.key
                 val (validity, fresh) = Mail.inbox(account, Accounts.secret(ctx, account)) { f ->
@@ -51,6 +50,10 @@ class CheckWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
                     Notify.newMail(ctx, account, fresh.filterNot { it.seen })
                 }
                 Log.i(TAG, "checked ${account.email}: ${fresh.size} new")
+            } catch (e: Microsoft.SendAgain) {
+                // Only a new code from the computer helps; the app says so on the mailbox.
+                Log.w(TAG, "Microsoft sign-in ended for ${account.email}")
+                Notify.signInAgain(ctx, account)
             } catch (e: Google.NeedsSignIn) {
                 // Retrying won't help until the user opens the app and signs in again.
                 Log.w(TAG, "Google needs sign-in for ${account.email}")
@@ -137,8 +140,11 @@ object Notify {
         )
         val n = NotificationCompat.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_notify).setContentIntent(open).setAutoCancel(true)
-            .setContentTitle("Sign in to Google again")
-            .setContentText("Qmail can't check ${account.email} until you do.")
+            .setContentTitle(if (account.auth == Auth.MICROSOFT) "Send ${account.email} from your computer again" else "Sign in to Google again")
+            .setContentText(
+                if (account.auth == Auth.MICROSOFT) "Microsoft ended its sign-in. In Qmail on the computer: Settings, Phone, Show QR code."
+                else "Qmail can't check ${account.email} until you do.",
+            )
             .build()
         @Suppress("MissingPermission")
         NotificationManagerCompat.from(ctx).notify(id(account) xor 0x40000000, n)

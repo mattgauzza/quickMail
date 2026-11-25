@@ -302,7 +302,7 @@ iframe.body { display: block; width: 100%; height: 60px; border: 0; background: 
 .phone-pick { display: flex; align-items: center; gap: 8px; width: 100%; cursor: pointer; }
 .phone-pick small { margin-left: auto; font-size: 12px; }
 .phone-code { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
-.phone-code img { border-radius: 12px; background: #fff; image-rendering: pixelated; }
+.phone-code img { max-width: 100%; height: auto; border-radius: 12px; background: #fff; image-rendering: pixelated; }
 .phone-steps { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 10px; }
 .phone-steps ol { margin: 0; padding-left: 20px; line-height: 1.7; }
 .passphrase { margin: 0; padding: 12px 14px; border-radius: 10px; background: var(--search); font: 600 20px/1.3 ui-monospace, 'Cascadia Mono', Consolas, monospace; letter-spacing: .3px; user-select: all; }
